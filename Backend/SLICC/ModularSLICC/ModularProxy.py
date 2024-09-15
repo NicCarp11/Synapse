@@ -1,4 +1,3 @@
-from Backend.SLICC.ModularSLICC.cache.GenCacheBase import GenCacheBase
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.proxy.GenProxyBase import GenProxyBase
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
@@ -25,15 +24,15 @@ class ModularProxy(GenProxyBase):
             slicc_file.write(
                 self.add_tabs(
                     ''.join([
-                            # self.gen_cache_state_decl_str(arch, machine_id) + self.nl,
-                            # self.gen_cache_events_str(arch, in_ports) + self.nl,
-                            # self.gen_cache_struct_str(arch) + self.nl,
-                            # self.gen_cache_tbe_str(arch, machine_id) + self.nl,
-                            # self.gen_cache_static_fns_str(arch, machine_id) + self.nl,
-                            # self.gen_cache_out_ports_str(out_ports) + self.nl,
-                            # self.gen_cache_in_ports_str(cluster, arch, in_ports, out_ports) + self.nl,
-                            # self.gen_cache_actions_str(cluster, arch, in_ports, out_ports) + self.nl,
-                            # self.gen_cache_transitions_str(arch, in_ports),
+                            self.gen_proxy_state_decl_str(arch, machine_id) + self.nl,
+                            self.gen_proxy_events_str(arch, in_ports) + self.nl,
+                            self.gen_proxy_struct_str(arch) + self.nl,
+                            self.gen_proxy_tbe_str(arch, machine_id) + self.nl,
+                            self.gen_proxy_static_fns_str(arch, machine_id) + self.nl,
+                            self.gen_proxy_out_ports_str(out_ports) + self.nl,
+                            self.gen_proxy_in_ports_str(cluster, arch, in_ports, out_ports) + self.nl,
+                            self.gen_proxy_actions_str(cluster, arch, in_ports, out_ports) + self.nl,
+                            self.gen_proxy_transitions_str(arch, in_ports),
                         ]),
                     1
                 )
