@@ -78,7 +78,7 @@ class GenCacheInPorts(TemplateHandler):
                 assert (False, str(state)) not in access_transitions[access], \
                     f"Cannot both hit and miss the same access in the same state ({access},{str(state)})."
                 access_transitions[access][(True, str(state))] = trans
-            evicts = state.getevict()
+            evicts = list(set(state.getevict()))
             if evicts:
                 assert len(evicts) == 1, f"{evicts}"
                 access_transitions['evict'][(False, str(state))] = evicts[0]
