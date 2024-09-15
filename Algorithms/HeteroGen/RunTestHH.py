@@ -32,6 +32,7 @@ import os
 import random
 import time
 
+from Backend.SLICC.RunSLICCModular import RunSLICCModular
 from Parser.NetworkxParser.ClassProtoParser import ProtoParser
 
 from DataObjects.ClassMachine import Machine
@@ -97,17 +98,19 @@ class RunHH(Debug):
         #hhcache_machine = Machine(level_2.cache)
         #cache_machine_2 = Machine(hhgen_ctrl.arch_tuple[1])
 
-        cluster_1 = Cluster(
-            tuple([cache_machine_1, cache_machine_1]) + tuple([hhcache_machine]),
-            'C1', False)
-        cluster_2 = Cluster(
-            tuple([cache_machine_2, ]) + tuple([hhcache_machine, directory_machine_2]),
-            'C2', False)
+        # cluster_1 = Cluster(
+        #     tuple([cache_machine_1, cache_machine_1]) + tuple([hhcache_machine]),
+        #     'C1', False)
+        # cluster_2 = Cluster(
+        #     tuple([cache_machine_2, ]) + tuple([hhcache_machine, directory_machine_2]),
+        #     'C2', False)
 
         #cluster_1.update_machine_archs(directory_machine_1.get_arch_list()[0], hhgen_ctrl)
         #cluster_2.update_machine_archs(hhcache_machine_2.get_arch_list()[0], hhgen_ctrl)
 
-        GenerateMurphi([cluster_1, cluster_2], 'HH_DeadlockFreedom', None)
+        cluster = Cluster(tuple([cache_machine_1, cache_machine_2, directory_machine_2, hhcache_machine]), "C1", False)
+        RunSLICCModular(cluster, self.sys_name)
+        # GenerateMurphi([cluster_1, cluster_2], 'HH_DeadlockFreedom', None)
 
         #RunMurphiCheck([cluster_1], sys_name, None, 4000, 'DeadlockFreedom')
         #RunSLICCModular(cluster_1, sys_name)
