@@ -32,6 +32,8 @@
 import os
 from time import sleep
 
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Backend.SLICC.ModularSLICC.ModularProxy import ModularProxy
 from DataObjects.ClassCluster import Cluster
 from Debug.Monitor.MakeDir import make_dir
 from Backend.SLICC.ModularSLICC.ModularMsg import ModularMsg
@@ -52,13 +54,18 @@ def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
 
     file_name = "SLICC_TEST"
 
-    # There must not exist more than one directory
-    dir_list = []
-    for arch in cluster.get_machine_architectures():
-        if arch.machine.check_dir():
-            ModularDir(cluster, arch, file_name)
+    directories = cluster.get_machine_architectures_by_type(ProtoMachine.k_dir)
+    proxies = [cache for cache in directories if isinstance(cache, HHDirArchitecture)]
+    directory, = [dir for dir in directories if not isinstance(dir, HHDirArchitecture)]
+    caches = cluster.get_machine_architectures_by_type(ProtoMachine.k_cache)
 
-    Debug.p_warning("More than one directory found, count is: " + str(len(dir_list)), len(dir_list) > 1)
+    ModularDir(cluster, directory, file_name)
+
+    for idx, proxy in enumerate(proxies):
+        ModularProxy(cluster, proxy, file_name, (idx + 1 + len(caches)))
+
+    for idx, cache in enumerate(caches):
+        ModularCache(cluster, cache, file_name, (idx + 1) if len(caches) > 1 else None)
 
     for arch in cluster.get_machine_architectures():
         if arch.machine.check_cache():
