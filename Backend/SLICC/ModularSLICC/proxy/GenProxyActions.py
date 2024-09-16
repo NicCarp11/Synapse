@@ -53,10 +53,10 @@ class GenProxyActions(TemplateHandler):
                                   )
 
         port_actions = [
-            GenMachineActions.gen_pop_action(
-                self, "mandatory_in", self._gen_queue_pop_action_shorthand("mandatory_in")),
-            GenMachineActions.gen_recycle_action(
-                self, "mandatory_in", self._gen_recycle_action_shorthand("mandatory_in")),
+            # GenMachineActions.gen_pop_action(
+            #     self, "mandatory_in", self._gen_queue_pop_action_shorthand("mandatory_in")),
+            # GenMachineActions.gen_recycle_action(
+            #     self, "mandatory_in", self._gen_recycle_action_shorthand("mandatory_in")),
         ]
         for port_name in sorted(in_ports.values()):
             port_actions.append(

@@ -31,6 +31,7 @@ class GenProxyBase(
         GenProxyHeader.__init__(self, template_dir)
         GenProxyFooter.__init__(self, template_dir)
         GenProxyStateDecl.__init__(self, template_dir)
+        GenProxyActions.__init__(self, template_dir)
         GenProxyOutPorts.__init__(self, template_dir)
         GenProxyStaticFns.__init__(self, template_dir)
         GenProxyStruct.__init__(self, template_dir)

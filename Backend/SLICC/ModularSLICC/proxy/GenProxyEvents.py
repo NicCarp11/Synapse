@@ -17,11 +17,12 @@ class GenProxyEvents(TemplateHandler):
     def gen_proxy_events_str(self, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]') -> str:
 
         const_str = "//" + __name__ + self.nl
-        event_strs = self.gen_local_hit_events(Util.get_local_hit_events(arch))
-        event_strs.append(GenMachineEvents.gen_stall_event(self, "mandatory_in"))
+        event_strs = []
+        # event_strs.append(self.gen_local_hit_events(Util.get_local_hit_events(arch)))
+        # event_strs.append(GenMachineEvents.gen_stall_event(self, "mandatory_in"))
         for port in sorted(in_ports.values()):
-            event_strs.extend(
-                self.gen_remote_hit_events(port, Util.get_remote_hit_events_port(arch, port)))
+            # event_strs.extend(
+            #     self.gen_remote_hit_events(port, Util.get_remote_hit_events_port(arch, port)))
             event_strs.append(f"dealloc{port}, desc=\"Event indicating the cache line + tbe should be deallocated "
                               f"following a message received on {port}.\"{self.sem}")
             event_strs.append(GenMachineEvents.gen_stall_event(self, port))

@@ -30,18 +30,37 @@
 #
 
 from typing import Set, Dict, Tuple, List
-from collections import OrderedDict
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
-from DataObjects.ClassCluster import Cluster
+
+from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
+from Backend.SLICC.ModularSLICC import SLICCTokens
+from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
+from DataObjects.Architecture.ClassGlobalBaseArchitecture import GlobalBaseArchitecture
+from DataObjects.ClassState import State
+from DataObjects.FlowDataTypes.ClassBaseAccess import Access
+from DataObjects.States.ClassCompoundState import CompoundState
 from DataObjects.States.ClassStatev2 import State_v2
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 
+def get_arch_access_perms(arch: FlatArchitecture, state: State_v2, default: str | None = None) -> set[str]:
+    def get_accesses(state: State_v2, arch: FlatArchitecture) -> set[str]:
+        t = arch.stable_state_access_permission_map.get(state, {default} if default else {})
+        return set(str(a) for a in t)
 
-def get_invalid_states(arch: BaseArchitecture) -> Set[State_v2]:
-    stable_state_perms = [(state, [str(access.guard) for access in state.getaccesshit()])
-                          for state in arch.stable_states]
+    if isinstance(state, CompoundState):
+        assert isinstance(arch, ArchTupleStateOrdering)
+        accesses = set()
+        for sub_state in state.base_states:
+            accesses.update(get_accesses(sub_state, arch.get_arch_by_state(sub_state)))
+        return accesses
+    else:
+        return get_accesses(state, arch)
+
+def get_invalid_states(arch: FlatArchitecture) -> Set[State_v2]:
+    stable_state_perms = [(state, get_arch_access_perms(arch, state))
+                          for state in arch.get_architecture_stable_states()]
     invalid_states = {state
                       for state, perms in stable_state_perms
                       if "load" not in perms and "store" not in perms}

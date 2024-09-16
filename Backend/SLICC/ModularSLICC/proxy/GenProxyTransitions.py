@@ -49,24 +49,26 @@ class GenProxyTransitions(TemplateHandler):
                                         )
         alloc_trans_str = (self.nl * 2).join(alloc_trans_strs)
 
-        local_hit_trans_strs = []
-        local_hit_map = Util.get_local_hit_events(arch)
-        for (access, start_state), (end_state, event_name) in sorted(local_hit_map.items()):
-            local_hit_trans_strs.append(self.string_repl_keys(self.open_template("transition_local_hit.sm"),
-                                                              [start_state, event_name, end_state, access]
-                                                              )
-                                        )
-        local_hit_trans_str = (self.nl * 2).join(local_hit_trans_strs)
-
-        remote_hit_trans_strs = []
-        for in_port in sorted(in_ports.values()):
-            remote_hit_map = Util.get_remote_hit_events_port(arch, in_port)
-            for (access, end_state), event_name in sorted(remote_hit_map.items()):
-                remote_hit_trans_strs.append(self.string_repl_keys(self.open_template("transition_remote_hit.sm"),
-                                                                   [end_state, event_name, access, in_port]
-                                                                   )
-                                             )
-        remote_hit_trans_str = (self.nl * 2).join(remote_hit_trans_strs)
+        local_hit_trans_str = ""
+        remote_hit_trans_str = ""
+        # local_hit_trans_strs = []
+        # local_hit_map = Util.get_local_hit_events(arch)
+        # for (access, start_state), (end_state, event_name) in sorted(local_hit_map.items()):
+        #     local_hit_trans_strs.append(self.string_repl_keys(self.open_template("transition_local_hit.sm"),
+        #                                                       [start_state, event_name, end_state, access]
+        #                                                       )
+        #                                 )
+        # local_hit_trans_str = (self.nl * 2).join(local_hit_trans_strs)
+#
+        # remote_hit_trans_strs = []
+        # for in_port in sorted(in_ports.values()):
+        #     remote_hit_map = Util.get_remote_hit_events_port(arch, in_port)
+        #     for (access, end_state), event_name in sorted(remote_hit_map.items()):
+        #         remote_hit_trans_strs.append(self.string_repl_keys(self.open_template("transition_remote_hit.sm"),
+        #                                                            [end_state, event_name, access, in_port]
+        #                                                            )
+        #                                      )
+        # remote_hit_trans_str = (self.nl * 2).join(remote_hit_trans_strs)
 
         return "//" + __name__ + self.nl \
                + dealloc_trans_str + (self.nl * 2) \

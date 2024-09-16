@@ -124,7 +124,7 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                    f"{{{self.nl}{body}{self.nl}}}{self.nl}"
 
         elif op == ProtoParserBase.k_mcast:
-            assert self.arch.machine.check_dir(), "TODO only dirs allowed to mcast for now"
+            # assert not self.cache, "TODO only dirs allowed to mcast for now"
             net, message_var, destination_set = childsToStringList(operation)
             assert message_var in self.constructed_messages, f"tried to send {message_var} which does not exist"
             message_dict = self.constructed_messages[message_var]

@@ -29,7 +29,13 @@
 #
 #
 
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
+from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
+from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from Backend.SLICC.ModularSLICC.common import Util
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
+from DataObjects.ClassCluster import Cluster
+from DataObjects.FlowDataTypes.ClassBaseAccess import Access, BaseAccess
+from DataObjects.States.ClassCompoundState import CompoundState
 from DataObjects.States.ClassStatev2 import State_v2
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 
@@ -60,27 +66,10 @@ class GenMachineStateDecl:
         # So, TODO actually model the mem controller's permissions
 
         # This definitely needs to evolve in the future...
+        if not cache:
+            accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
 
-        if arch.machine.check_dir():
-            equivalent_cache_states = [
-                c_state for c_state in arch.get_architecture_states_verified() if str(c_state) == str(state)]
-            if len(equivalent_cache_states) > 0:
-                cache_state_permissions = [str(trans.guard) for trans in equivalent_cache_states[0].getaccesshit()]
-                if not state.stable:
-                    return "Busy"
-                elif "load" not in cache_state_permissions:
-                    # We can write if no one is reading
-                    return "Read_Write"
-                else: #if "store" not in cache_state_permissions:
-                    return "Maybe_Stale"
-                #    return "Maybe_Stale"
-                #    # TODO does this ^ work? like is it safe to set Maybe_Stale for the S state, for example? Or do we need Read_Only scenarios in the directory, too?
-                #    # We may certainly read if no one is writing
-                #else:
-                #    # If cache may write, then our line may be stale
-            else:
-                # For now assuming cache stable states === dir stable states, so this should only happen
-                # if the state is a transient one
+            if GenMachineStateDecl.k_busy in accesses:
                 return "Busy"
         else:
             assert arch.machine.check_cache()
