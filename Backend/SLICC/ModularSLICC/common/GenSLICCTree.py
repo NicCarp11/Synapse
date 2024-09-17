@@ -88,7 +88,7 @@ class GenSLICCTree(TemplateHandler, Debug):
                              for slicc_operation
                              in self.convert_operation_tree_to_slicc_tree(operation_tree)])
 
-    def gen_operation_tree_from_trans(self, transitions: List[Transition_v2]) -> DiGraph:
+    def gen_operation_tree_from_trans(self, transitions: List[Transition_v2], insert_allocations: bool = False) -> DiGraph:
         guard = str(transitions[0].guard)
         operation_tree = DiGraph()
 
@@ -101,6 +101,15 @@ class GenSLICCTree(TemplateHandler, Debug):
 
             self.pcc_to_slicc.new_transition(str(transition.guard))
             cur_node = guard
+
+            invalid_states = Util.get_invalid_states(self.arch)
+            if insert_allocations and self.cache and transition.start_state in invalid_states and not transition.final_state in invalid_states:
+                alloc_str = "//ALLOOOOOOOC"
+                print("ALLOC: ", transition)
+                operation_tree.add_node(alloc_str, op_str=alloc_str)
+                operation_tree.add_edge(cur_node, alloc_str)
+                cur_node = alloc_str
+
             if self.set_final_state and transition.start_state.stable and not transition.final_state.stable:
                 tbe_str = Util.check_tbe_valid(self, self.arch, self.port_name)
                 operation_tree.add_node(tbe_str, op_str=tbe_str)

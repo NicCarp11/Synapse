@@ -44,6 +44,7 @@ from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenPCCToSLICC import GenPCCToSLICC
 from Backend.SLICC.ModularSLICC.common.GenSLICCTree import GenSLICCTree, UniqueNode
 
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
 
 # TODO this class should probably be re-written to not be fully static so as to reduce the number of arguments
 # being passed around... Keeping it like this for now to remain consistent with the rest of the code base
@@ -104,13 +105,10 @@ class GenMachineInPorts:
                 if not first_guard:
                     prefix = f"{temp_h.nl}{temp_h.tab}}} else {prefix}"
                 prefix = temp_h.tab + prefix
-
-                slicc_tree = slicc_tree_gen.gen_operation_tree_from_trans(transitions_by_guard[guard])
-                test = temp_h.add_tabs(slicc_tree_gen.tree_to_str(slicc_tree), 2)
-
-                #if Util.must_access_memory(arch):
-                #    GenMachineInPorts.replace_mem_ops(temp_h, arch, cluster, slicc_tree, Util.get_active_cache_line(arch),
-                #                                      transitions_by_guard[guard], main_mem_accesses, port_name)
+                slicc_tree = slicc_tree_gen.gen_operation_tree_from_trans(transitions_by_guard[guard], isinstance(arch, HHDirArchitecture))
+                if Util.must_access_memory(cache):
+                    GenMachineInPorts.replace_mem_ops(temp_h, arch, cache, slicc_tree, Util.get_active_cache_line(arch),
+                                                      transitions_by_guard[guard], main_mem_accesses, port_name)
                 op = temp_h.add_tabs(slicc_tree_gen.tree_to_str(slicc_tree), 2)
                 op_string += prefix + op
                 first_guard = False
