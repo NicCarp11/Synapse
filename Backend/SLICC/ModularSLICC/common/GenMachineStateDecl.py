@@ -28,8 +28,10 @@
 #
 #
 #
+from networkx import union
 
 from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
@@ -65,20 +67,35 @@ class GenMachineStateDecl:
         # This will break down when cache and dir states do not match exactly, like with MESI.
         # So, TODO actually model the mem controller's permissions
 
+        if isinstance(arch, HHDirArchitecture):
+            assert isinstance(state, CompoundState)
+            perms = Util.get_compound_perms(arch, state, GenMachineStateDecl.k_busy)
+            c, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_cache]
+            d, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_dir]
+
+            if GenMachineStateDecl.k_busy in c or GenMachineStateDecl.k_busy in d:
+                return "Busy"
+            elif BaseAccess.k_store in c and not BaseAccess.k_load in d:
+                return "Read_Write"
+            elif BaseAccess.k_load in c and not BaseAccess.k_store in d:
+                return "Read_Only"
+            elif len(c) == 0:
+                return "Invalid"
+            else:
+                return "Maybe_Stale"
+
+        accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
+
         # This definitely needs to evolve in the future...
         if not cache:
-            accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
-
             if GenMachineStateDecl.k_busy in accesses:
                 return "Busy"
         else:
-            assert arch.machine.check_cache()
-            permissions = [str(trans.guard) for trans in state.getaccesshit()]
-            if "store" in permissions:
-                return "Read_Write"
-            elif "load" in permissions:
-                return "Read_Only"
-            elif not state.stable:
+            if GenMachineStateDecl.k_busy in accesses:
                 return "Busy"
+            elif BaseAccess.k_store in accesses:
+                return "Read_Write"
+            elif BaseAccess.k_load in accesses:
+                return "Read_Only"
             else:
                 return "Invalid"

@@ -32,8 +32,10 @@
 from typing import Set, Dict, Tuple, List
 
 from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from DataObjects.Architecture.ArchitectureClassification import ArchitectureClassification
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.Architecture.ClassGlobalBaseArchitecture import GlobalBaseArchitecture
 from DataObjects.ClassState import State
@@ -41,24 +43,31 @@ from DataObjects.FlowDataTypes.ClassBaseAccess import Access
 from DataObjects.States.ClassCompoundState import CompoundState
 from DataObjects.States.ClassStatev2 import State_v2
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
-from Backend.SLICC.ModularSLICC import SLICCTokens
-from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from Parser.DataTypes.ClassProtoMachine import ProtoMachine
+
+def get_compound_perms(arch: FlatArchitecture, state: CompoundState, default: str | None = None) -> list[tuple[FlatArchitecture, set[str]]]:
+    assert isinstance(arch, ArchTupleStateOrdering)
+    accesses = []
+    for sub_state in state.base_states:
+        sub_arch = arch.get_arch_by_state(sub_state)
+        accesses.append((sub_arch, get_arch_access_perms(sub_arch, sub_state, default)))
+    return accesses
 
 def get_arch_access_perms(arch: FlatArchitecture, state: State_v2, default: str | None = None) -> set[str]:
-    def get_accesses(state: State_v2, arch: FlatArchitecture) -> set[str]:
+    if isinstance(state, CompoundState):
+        return set.union(*[p for _, p in get_compound_perms(arch, state, default)])
+    else:
         t = arch.stable_state_access_permission_map.get(state, {default} if default else {})
         return set(str(a) for a in t)
 
-    if isinstance(state, CompoundState):
-        assert isinstance(arch, ArchTupleStateOrdering)
-        accesses = set()
-        for sub_state in state.base_states:
-            accesses.update(get_accesses(sub_state, arch.get_arch_by_state(sub_state)))
-        return accesses
-    else:
-        return get_accesses(state, arch)
-
 def get_invalid_states(arch: FlatArchitecture) -> Set[State_v2]:
+    if isinstance(arch, HHDirArchitecture):
+        for i, c in enumerate(arch.arch_tuple):
+            if c.machine.mach_type == ProtoMachine.k_cache:
+                cs = get_invalid_states(c)
+                r = set([state for state in arch.get_architecture_stable_states() if state.base_states[i] in cs])
+                return r
+        assert False, "HH Dirs should have a cache"
     stable_state_perms = [(state, get_arch_access_perms(arch, state))
                           for state in arch.get_architecture_stable_states()]
     invalid_states = {state
