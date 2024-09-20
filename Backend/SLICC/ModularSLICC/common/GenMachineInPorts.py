@@ -105,7 +105,7 @@ class GenMachineInPorts:
                 if not first_guard:
                     prefix = f"{temp_h.nl}{temp_h.tab}}} else {prefix}"
                 prefix = temp_h.tab + prefix
-                slicc_tree = slicc_tree_gen.gen_operation_tree_from_trans(transitions_by_guard[guard], isinstance(arch, HHDirArchitecture))
+                slicc_tree = slicc_tree_gen.gen_operation_tree_from_trans(transitions_by_guard[guard])
                 if Util.must_access_memory(cache):
                     GenMachineInPorts.replace_mem_ops(temp_h, arch, cache, slicc_tree, Util.get_active_cache_line(arch),
                                                       transitions_by_guard[guard], main_mem_accesses, port_name)

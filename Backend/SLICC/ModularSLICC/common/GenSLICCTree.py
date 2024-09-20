@@ -35,8 +35,15 @@ from collections import OrderedDict
 from Parser.NetworkxParser.ClassProtoParserBase import ProtoParserBase
 from Parser.CopyReducedCommonTree import copy_tree
 
-from DataObjects.ClassCluster import Cluster
+from Algorithms.ControllerGeneration.CompoundBaseController.CompoundDirCacheArchitecture import \
+    CompoundDirCacheArchitecture
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from Backend.SLICC.ModularSLICC.common import Util
+from Backend.SLICC.ModularSLICC.common.GenPCCToSLICC import GenPCCToSLICC
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
+from DataObjects.ClassCluster import Cluster
+from DataObjects.States.ClassCompoundState import CompoundState
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
@@ -88,11 +95,14 @@ class GenSLICCTree(TemplateHandler, Debug):
                              for slicc_operation
                              in self.convert_operation_tree_to_slicc_tree(operation_tree)])
 
-    def gen_operation_tree_from_trans(self, transitions: List[Transition_v2], insert_allocations: bool = False) -> DiGraph:
+    def gen_operation_tree_from_trans(self, transitions: List[Transition_v2]) -> DiGraph:
         guard = str(transitions[0].guard)
         operation_tree = DiGraph()
 
         operation_tree.add_node(guard)
+
+        # invalid_states = Util.get_invalid_states(self.arch)
+
 
         # Track all operations in a tree
         operation_list = []
@@ -102,12 +112,37 @@ class GenSLICCTree(TemplateHandler, Debug):
             self.pcc_to_slicc.new_transition(str(transition.guard))
             cur_node = guard
 
-            invalid_states = Util.get_invalid_states(self.arch)
-            if insert_allocations and self.cache and transition.start_state in invalid_states and not transition.final_state in invalid_states:
-                alloc_str = Util.check_cache_valid()
-                operation_tree.add_node(alloc_str, op_str=alloc_str)
-                operation_tree.add_edge(cur_node, alloc_str)
-                cur_node = alloc_str
+            refresh_mru = False
+            if isinstance(self.arch, HHDirArchitecture):
+                assert isinstance(transition.start_state, CompoundState)
+                state_map = None
+                invalid = False
+                for cs in transition.start_state.base_states:
+                    ca = self.arch.get_arch_by_state(cs)
+                    if ca.machine.mach_type == ProtoMachine.k_dir:
+                        assert isinstance(ca, CompoundDirCacheArchitecture)
+                        state_map = ca.dir_state_req_base_message_access_map.get(cs, {})
+                    if ca.machine.mach_type == ProtoMachine.k_cache:
+                        invalid = len(ca.stable_state_access_permission_map.get(cs, {None, None})) == 0
+                assert state_map is not None
+                if transition.guard in state_map:
+                    if invalid:
+                        alloc_str = Util.check_cache_valid()
+                        operation_tree.add_node(alloc_str, op_str=alloc_str)
+                        operation_tree.add_edge(cur_node, alloc_str)
+                        cur_node = alloc_str
+                        #print("Alloc", transition)
+                    else:
+                        refresh_mru = True
+                        #print("Refresh", transition)
+
+
+
+            #if insert_allocations and self.cache and transition.start_state in invalid_states and not transition.final_state in invalid_states:
+            #    alloc_str = Util.check_cache_valid()
+            #    operation_tree.add_node(alloc_str, op_str=alloc_str)
+            #    operation_tree.add_edge(cur_node, alloc_str)
+            #    cur_node = alloc_str
 
             if self.set_final_state and transition.start_state.stable and not transition.final_state.stable:
                 tbe_str = Util.check_tbe_valid(self, self.arch, self.port_name)
@@ -155,6 +190,12 @@ class GenSLICCTree(TemplateHandler, Debug):
                 operation_tree.add_node(operation, op_str=op_str)
                 operation_tree.add_edge(cur_node, operation)
                 cur_node = operation
+
+            if refresh_mru:
+                mru_str = "cache.setMRU(LineAddress);"
+                operation_tree.add_node(mru_str, op_str=mru_str)
+                operation_tree.add_edge(cur_node, mru_str)
+                cur_node = mru_str
 
             if self.set_final_state:
                 op_str = GenPCCToSLICC.gen_final_state(self, str(transition.final_state), self.arch)
