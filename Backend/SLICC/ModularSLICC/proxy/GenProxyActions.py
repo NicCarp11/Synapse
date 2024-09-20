@@ -23,34 +23,34 @@ class GenProxyActions(TemplateHandler):
         # for transitions which require allocating a new cache entry (i.e. ones starting
         # in an invalid/not-present state). The rest of the controller will be defined
         # in the in_port definition.
-        op_actions = []
-        invalid_states = Util.get_invalid_states(arch)
-        access_transitions = {access: MultiDict() for access in ["load", "store"]}
-        for state in invalid_states:
-            for trans in state.getaccessmiss():
-                access = trans.access
-                access = str(access)
-                access_transitions[access][str(state)] = trans
-        for _, state_map in sorted(access_transitions.items()):
-            for state, transitions in sorted(state_map.items()):
-                slicc_tree_gen = GenSLICCTree(cluster, arch, True, "", out_ports, allow_port_popping=False,
-                                              set_final_state=False)
-                op_str = slicc_tree_gen.gen_slicc_tree(transitions)
-                if re.search(r"\bLineAddress\b", op_str) is not None:
-                    # If we reference the LineAddress, we need to bring it into scope from the in_msg first
-                    op_str = f"Addr LineAddress := in_msg.LineAddress{self.end}" + op_str
-                if re.search(r"\bentry\b", op_str) is not None:
-                    # Need to add a renaming of cache_entry to entry
-                    op_str = f"Entry entry := cache_entry{self.end}" + op_str
-                # Assert all the transitions have the same end state, otherwise I don't know what to do...
-                next_state = str(transitions[0].final_state)
-                assert all(str(trans.final_state) == next_state for trans in transitions)
-                action_name = GenMachineActions.get_operation_action_name(str(state), next_state)
-                shorthand = self._gen_operation_action_shorthand(str(state), next_state)
-                op_actions.append(self.string_repl_keys(self.open_template("cache_peek_mandatory_action.sm"),
-                                                        [action_name, shorthand, self.add_tabs(op_str, 2)]
-                                                        )
-                                  )
+        # op_actions = []
+        # invalid_states = Util.get_invalid_states(arch)
+        # access_transitions = {access: MultiDict() for access in ["load", "store"]}
+        # for state in invalid_states:
+        #     for trans in state.getaccessmiss():
+        #         access = trans.access
+        #         access = str(access)
+        #         access_transitions[access][str(state)] = trans
+        # for _, state_map in sorted(access_transitions.items()):
+        #     for state, transitions in sorted(state_map.items()):
+        #         slicc_tree_gen = GenSLICCTree(cluster, arch, True, "", out_ports, allow_port_popping=False,
+        #                                       set_final_state=False)
+        #         op_str = slicc_tree_gen.gen_slicc_tree(transitions)
+        #         if re.search(r"\bLineAddress\b", op_str) is not None:
+        #             # If we reference the LineAddress, we need to bring it into scope from the in_msg first
+        #             op_str = f"Addr LineAddress := in_msg.LineAddress{self.end}" + op_str
+        #         if re.search(r"\bentry\b", op_str) is not None:
+        #             # Need to add a renaming of cache_entry to entry
+        #             op_str = f"Entry entry := cache_entry{self.end}" + op_str
+        #         # Assert all the transitions have the same end state, otherwise I don't know what to do...
+        #         next_state = str(transitions[0].final_state)
+        #         assert all(str(trans.final_state) == next_state for trans in transitions)
+        #         action_name = GenMachineActions.get_operation_action_name(str(state), next_state)
+        #         shorthand = self._gen_operation_action_shorthand(str(state), next_state)
+        #         op_actions.append(self.string_repl_keys(self.open_template("cache_peek_mandatory_action.sm"),
+        #                                                 [action_name, shorthand, self.add_tabs(op_str, 2)]
+        #                                                 )
+        #                           )
 
         port_actions = [
             # GenMachineActions.gen_pop_action(
@@ -64,19 +64,14 @@ class GenProxyActions(TemplateHandler):
             port_actions.append(
                 GenMachineActions.gen_recycle_action(self, port_name, self._gen_recycle_action_shorthand(port_name)))
 
-        active_cache_line = Util.get_active_cache_line(arch)
+        # active_cache_line = Util.get_active_cache_line(arch)
 
         return "//" + __name__ + self.nl \
                + self.open_template("action_alloc_entry.sm") + self.nl \
                + self.open_template("action_dealloc_entry.sm") + self.nl \
                + self.open_template("action_alloc_tbe.sm") + self.nl \
                + self.open_template("action_dealloc_tbe.sm") + self.nl \
-               + self.string_repl_keys(self.open_template("action_cache_local_load_hit.sm"), [active_cache_line]) + self.nl \
-               + self.string_repl_keys(self.open_template("action_cache_local_store_hit.sm"), [active_cache_line]) + self.nl \
-               + self.string_repl_keys(self.open_template("action_cache_remote_load_hit.sm"), [active_cache_line]) + self.nl \
-               + self.string_repl_keys(self.open_template("action_cache_remote_store_hit.sm"), [active_cache_line]) + self.nl \
                + (self.nl * 2).join(port_actions) + (self.nl * 2) \
-               + (self.nl * 2).join(op_actions) + (self.nl * 2) \
                + GenMachineActions.gen_empty_action(self) + self.nl
 
     def _gen_operation_action_shorthand(self, start_state: str, end_state: str) -> str:

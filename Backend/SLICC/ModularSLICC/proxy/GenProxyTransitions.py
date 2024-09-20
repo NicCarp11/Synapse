@@ -20,7 +20,7 @@ class GenProxyTransitions(TemplateHandler):
         all_states_str = f"{{{', '.join(all_states)}}}"
 
         dealloc_trans_strs = []
-        stall_strs = [GenMachineTransitions.gen_stall_transition(self, all_states, "mandatory_in")]
+        stall_strs = []
         for port_name in sorted(in_ports.values()):
             dealloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_dealloc_entry.sm"),
                                                             [invalid_states_str,
@@ -34,23 +34,23 @@ class GenProxyTransitions(TemplateHandler):
         dealloc_trans_str = (self.nl * 2).join(dealloc_trans_strs)
         stall_str = (self.nl * 2).join(stall_strs)
 
-        alloc_trans_strs = []
-        next_states = sorted({str(state) for state in Util.get_states_following_invalid_states(arch)})
-        for next_state in next_states:
-            for state in invalid_states:
-                alloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_alloc_entry.sm"),
-                                                              [state,
-                                                               next_state,
-                                                               GenMachineActions.get_operation_action_name(state,
-                                                                                                         next_state
-                                                                                                         ),
-                                                               ]
-                                                              )
-                                        )
-        alloc_trans_str = (self.nl * 2).join(alloc_trans_strs)
+        # alloc_trans_strs = []
+        # next_states = sorted({str(state) for state in Util.get_states_following_invalid_states(arch)})
+        #for next_state in next_states:
+        #    for state in invalid_states:
+        #        alloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_alloc_entry.sm"),
+        #                                                      [state,
+        #                                                       next_state,
+        #                                                       GenMachineActions.get_operation_action_name(state,
+        #                                                                                                 next_state
+        #                                                                                                 ),
+        #                                                       ]
+        #                                                      )
+        #                                )
+        # alloc_trans_str = (self.nl * 2).join(alloc_trans_strs)
 
-        local_hit_trans_str = ""
-        remote_hit_trans_str = ""
+        # local_hit_trans_str = ""
+        # remote_hit_trans_str = ""
         # local_hit_trans_strs = []
         # local_hit_map = Util.get_local_hit_events(arch)
         # for (access, start_state), (end_state, event_name) in sorted(local_hit_map.items()):
@@ -72,10 +72,9 @@ class GenProxyTransitions(TemplateHandler):
 
         return "//" + __name__ + self.nl \
                + dealloc_trans_str + (self.nl * 2) \
-               + alloc_trans_str + (self.nl * 2) \
-               + local_hit_trans_str + (self.nl * 2) \
-               + remote_hit_trans_str + (self.nl * 2) \
                + stall_str + (self.nl * 2) \
+               + self.string_repl_keys(self.open_template("transition_alloc_cache_entry.sm"), [all_states_str]) \
+               + (self.nl * 2) \
                + self.string_repl_keys(self.open_template("transition_alloc_tbe.sm"), [all_states_str]) \
                + (self.nl * 2) \
                + self.string_repl_keys(self.open_template("transition_dealloc_tbe.sm"), [all_states_str]) \

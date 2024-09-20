@@ -279,6 +279,24 @@ def check_tbe_valid(temp_h: TemplateHandler, arch: BaseArchitecture, port: str) 
            f"{temp_h.tab * 2}{gen_stall_str(temp_h, arch, port)}{temp_h.nl}" \
            f"{temp_h.tab}}}{temp_h.nl}}}"
 
+def check_cache_valid() -> str:
+    #return f"if (is_invalid(cache_entry)) {{{temp_h.nl}" \
+    #       f"{temp_h.tab}if (cache.cacheAvail(in_msg.addr)) {{{temp_h.nl}" \
+    #       f"{temp_h.tab * 2}{gen_tbe_alloc_str(temp_h, cache)}{temp_h.nl}" \
+    #       f"{temp_h.tab}}} else {{{temp_h.nl}" \
+    #       f"{temp_h.tab * 2}{gen_stall_str(temp_h, cache, port)}{temp_h.nl}" \
+    #       f"{temp_h.tab}}}{temp_h.nl}}}"#
+    return """if (is_invalid(getEntry(LineAddress))) {
+  if (cache.cacheAvail(LineAddress)) {
+    trigger(Event:allocCacheEntry, LineAddress, getEntry(LineAddress), tbe);
+  } else {
+    Addr victim := L2cache.cacheProbe(LineAddress);
+    Entry victim_cache_entry := getEntry(victim);
+    //trigger(Event:Replacement, victim, victim_cache_entry, TBEs[victim]);
+    panic("Replacement is not implemented")
+  }
+}"""
+
 
 def get_message_size(message_dict: Dict[str, str], cluster: Cluster) -> str:
     if get_message_data_var(cluster) in message_dict.keys():

@@ -104,8 +104,7 @@ class GenSLICCTree(TemplateHandler, Debug):
 
             invalid_states = Util.get_invalid_states(self.arch)
             if insert_allocations and self.cache and transition.start_state in invalid_states and not transition.final_state in invalid_states:
-                alloc_str = "//ALLOOOOOOOC"
-                print("ALLOC: ", transition)
+                alloc_str = Util.check_cache_valid()
                 operation_tree.add_node(alloc_str, op_str=alloc_str)
                 operation_tree.add_edge(cur_node, alloc_str)
                 cur_node = alloc_str

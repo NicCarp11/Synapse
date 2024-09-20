@@ -27,12 +27,7 @@ class GenProxyEvents(TemplateHandler):
                               f"following a message received on {port}.\"{self.sem}")
             event_strs.append(GenMachineEvents.gen_stall_event(self, port))
 
-        next_states = {str(state) for state in Util.get_states_following_invalid_states(arch)}
-        for next_state in sorted(next_states):
-            event_strs.append(f"alloc{next_state}, "
-                              f"desc=\"Event indicating cache entry alloc before moving to {next_state}.\"{self.sem}"
-                              )
-
+        event_strs.append(GenMachineEvents.gen_cache_alloc_event(self))
         event_strs.append(GenMachineEvents.gen_tbe_alloc_event(self))
         event_strs.append(GenMachineEvents.gen_tbe_dealloc_event(self))
         event_strs.append(GenMachineEvents.gen_progress_event(self))

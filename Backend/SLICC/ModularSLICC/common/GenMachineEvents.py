@@ -64,6 +64,10 @@ class GenMachineEvents:
         return f"Stall{port}, desc=\"Stall the {port} port.\"{temp_h.end}"
 
     @staticmethod
+    def gen_cache_alloc_event(temp_h: TemplateHandler) -> str:
+        return f"allocCacheEntry, desc=\"Allocate a new cache entry.\"{temp_h.end}"
+
+    @staticmethod
     def gen_tbe_alloc_event(temp_h: TemplateHandler) -> str:
         return f"allocTBE, desc=\"Allocate a new TBE.\"{temp_h.end}"
 
