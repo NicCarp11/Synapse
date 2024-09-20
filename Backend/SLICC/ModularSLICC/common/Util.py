@@ -293,7 +293,7 @@ def check_cache_valid() -> str:
     Addr victim := L2cache.cacheProbe(LineAddress);
     Entry victim_cache_entry := getEntry(victim);
     //trigger(Event:Replacement, victim, victim_cache_entry, TBEs[victim]);
-    panic("Replacement is not implemented")
+    panic("Replacement is not implemented");
   }
 }"""
 
