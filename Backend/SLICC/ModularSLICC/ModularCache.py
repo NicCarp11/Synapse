@@ -38,12 +38,12 @@ from Backend.SLICC.ModularSLICC.cache.GenCacheBase import GenCacheBase
 class ModularCache(GenCacheBase):
     TemplateDir = "TempSLICC/machines"
 
-    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, controller_id: int, cache_id: None | int = None):
+    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, id_mapping: dict[str, str], cache_id: None | int = None):
         GenCacheBase.__init__(self, self.TemplateDir)
 
         file_name = file_name.split(".")[0] + "_cache.sm"
 
-        machine_id = f"L{controller_id}Cache";
+        machine_id = id_mapping[str(arch)]
 
         with open(file_name, "w") as slicc_file:
             # Write header
@@ -57,8 +57,8 @@ class ModularCache(GenCacheBase):
                              self.gen_cache_tbe_str(arch) + self.nl,
                              self.gen_cache_static_fns_str(arch) + self.nl,
                              self.gen_cache_out_ports_str(out_ports) + self.nl,
-                             self.gen_cache_in_ports_str(cluster, arch, in_ports, out_ports) + self.nl,
-                             self.gen_cache_actions_str(cluster, arch, in_ports, out_ports) + self.nl,
+                             self.gen_cache_in_ports_str(cluster, arch, in_ports, out_ports, id_mapping) + self.nl,
+                             self.gen_cache_actions_str(cluster, arch, in_ports, out_ports, id_mapping) + self.nl,
                              self.gen_cache_transitions_str(arch, in_ports),
                              ]
                             ),

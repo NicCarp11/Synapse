@@ -66,13 +66,14 @@ class GenPCCToSLICC(TemplateHandler, Debug):
         "count": "VectorCount_"
     }
 
-    def __init__(self, cluster: Cluster, arch: FlatArchitecture, out_ports: 'OrderedDict[str, str]'):
+    def __init__(self, cluster: Cluster, arch: FlatArchitecture, cache: bool, out_ports: 'OrderedDict[str, str]', machine_mappings: dict[str, str]):
         Debug.__init__(self)
 
         self.cluster = cluster
         self.arch = arch
         self.local_variables: Dict[str, str] = {}
         self.out_ports = out_ports
+        self.machine_mappings = machine_mappings
 
         self.constructed_messages = {}
         self.out_direction = "From" if self.arch.machine.check_dir() else "To"
@@ -242,16 +243,20 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             field = SLICCTokens.field_map.get(field, field)
             return f"{SLICCTokens.k_in_msg}{field}"
         elif str(operation) in self.arch.machine.variables:
-            return Util.get_entry_variable(self.arch, str(operation), str(operation))
-        elif str(operation) in self.local_variables:
-            assert 0, "NOT Implemented yet"
-            return str(operation) + "".join(childsToStringList(operation))
-        elif (str(operation) in [str(arch) for arch in self.cluster.get_machine_architectures()]
-              and not str(operation) == str(self.arch)):
-            if str(operation) in [str(arch) for arch in self.cluster.get_machine_architectures() if arch.machine.check_dir()]:
-                # Need to translate directory to use SLICC's directory-mapping function
-                return "mapAddressToMachine(LineAddress, MachineType:Directory)"
-            return str(operation)
+            right_value = str(operation)
+            right_type = self.arch.machine.variables[right_value]
+            if str(right_type) == ProtoParserBase.t_msg and len(operation.getChildren()) > 1:
+                field = str(operation.getChildren()[1])
+                right_value += "." + SLICCTokens.field_map.get(field, field)
+            return Util.get_entry_variable(self.arch, self.cache, str(operation), right_value)
+        elif str(operation) in self.machine_mappings:
+            if str(operation) == str(self.arch):
+                return SLICCTokens.k_mach
+            return f"mapAddressToMachine(LineAddress, MachineType:{self.machine_mappings[str(operation)]})"
+            #if str(operation) in set(str(level) for level in self.cluster.get_machine_architectures() if level.machine.mach_type == ProtoMachine.k_dir):
+            #    # Need to translate directory to use SLICC's directory-mapping function
+            #    return "mapAddressToMachine(LineAddress, MachineType:Directory)"
+            #return str(operation)
         else:
             return SLICCTokens.k_mach
 

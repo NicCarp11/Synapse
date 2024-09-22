@@ -23,10 +23,11 @@ class GenProxyInPorts(TemplateHandler):
             cluster: Cluster,
             arch: FlatArchitecture,
             in_ports: 'OrderedDict[str, str]',
-            out_ports: 'OrderedDict[str, str]'
+            out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
     ) -> str:
 
         return "//" + __name__ + self.nl \
                + GenMachineInPorts.gen_machine_in_ports(
-                    self, cluster, arch, True, "Cache", in_ports, out_ports) \
+                    self, cluster, arch, True, "Cache", in_ports, out_ports, machine_mappings) \
                + self.nl

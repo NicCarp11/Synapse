@@ -47,8 +47,7 @@ class GenCacheActions(TemplateHandler):
         TemplateHandler.__init__(self, handler_dir)
         self.generated_action_shorthands = set()
 
-    def gen_cache_actions_str(self, cluster: Cluster, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]',
-                              out_ports: 'OrderedDict[str, str]') -> str:
+    def gen_cache_actions_str(self, cluster: Cluster, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]', out_ports: 'OrderedDict[str, str]', machine_mappings: dict[str, str]) -> str:
 
         # We only need to generate actions corresponding to the operations in a transition
         # for transitions which require allocating a new cache entry (i.e. ones starting
@@ -64,7 +63,7 @@ class GenCacheActions(TemplateHandler):
                 access_transitions[access][str(state)] = trans
         for _, state_map in sorted(access_transitions.items()):
             for state, transitions in sorted(state_map.items()):
-                slicc_tree_gen = GenSLICCTree(cluster, arch, "", out_ports, allow_port_popping=False,
+                slicc_tree_gen = GenSLICCTree(cluster, arch, True, "", out_ports, machine_mappings, allow_port_popping=False,
                                               set_final_state=False)
                 op_str = slicc_tree_gen.gen_slicc_tree(transitions)
                 if re.search(r"\bLineAddress\b", op_str) is not None:

@@ -53,16 +53,16 @@ class GenCacheInPorts(TemplateHandler):
             cluster: Cluster,
             arch: FlatArchitecture,
             in_ports: 'OrderedDict[str, str]',
-            out_ports: 'OrderedDict[str, str]'
+            out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
     ) -> str:
 
         return "//" + __name__ + self.nl \
                + GenMachineInPorts.gen_machine_in_ports(
-                    self, cluster, arch, in_ports, out_ports) \
-               + self.nl + self._gen_mandatory_in_port(cluster, arch, out_ports) + self.nl
+                    self, cluster, arch, True, "Cache", in_ports, out_ports, machine_mappings) \
+               + self.nl + self._gen_mandatory_in_port(cluster, arch, out_ports, machine_mappings) + self.nl
 
-    def _gen_mandatory_in_port(self, cluster: Cluster, arch: FlatArchitecture,
-                               out_ports: 'OrderedDict[str, str]') -> str:
+    def _gen_mandatory_in_port(self, cluster: Cluster, arch: FlatArchitecture, out_ports: 'OrderedDict[str, str]', machine_mappings: dict[str, str]) -> str:
 
         access_transitions = {access: MultiDict() for access in ["load", "store", "evict"]}
         for state in arch.get_architecture_states_verified():
@@ -86,11 +86,11 @@ class GenCacheInPorts(TemplateHandler):
 
         return self.string_repl_keys(self.open_template("mandatory_cpu_in_port.sm"),
                                      [self._gen_access_str(
-                                         cluster, arch, access_transitions, out_ports, 4, "evict"),
+                                         cluster, arch, access_transitions, out_ports, machine_mappings, 4, "evict"),
                                       self._gen_access_str(
-                                         cluster, arch, access_transitions, out_ports, 5, "load"),
+                                         cluster, arch, access_transitions, out_ports, machine_mappings, 5, "load"),
                                       self._gen_access_str(
-                                         cluster, arch, access_transitions, out_ports, 5, "store"),
+                                         cluster, arch, access_transitions, out_ports, machine_mappings, 5, "store"),
                                       ]
                                      )
 
@@ -100,6 +100,7 @@ class GenCacheInPorts(TemplateHandler):
             arch: FlatArchitecture,
             transition_map: Dict[str, 'MultiDict'],
             out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
             indent_level: int,
             access_type: str
     ) -> str:
@@ -112,8 +113,8 @@ class GenCacheInPorts(TemplateHandler):
 
         for (is_hit, state_name), transitions in transition_map.items():
 
-            slicc_tree_gen = GenSLICCTree(cluster, arch, "mandatory_in", out_ports,
-                                          allow_port_popping=False, set_final_state=(not is_hit))
+            slicc_tree_gen = GenSLICCTree(cluster, arch, True, "mandatory_in", out_ports,
+                                          machine_mappings, allow_port_popping=False, set_final_state=(not is_hit))
 
             op_str = ""
             entry_alloced = False

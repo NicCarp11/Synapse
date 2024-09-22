@@ -54,11 +54,13 @@ class GenDirInPorts(TemplateHandler):
             arch: FlatArchitecture,
             in_ports: 'OrderedDict[str, str]',
             out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
             main_memory_accesses: Dict[Tuple[str, str], DiGraph],
     ) -> str:
 
         fsm_in_ports = GenMachineInPorts.gen_machine_in_ports(
-            self, cluster, arch, in_ports, out_ports, main_mem_accesses=main_memory_accesses)
+            self, cluster, arch, False, "Directory", in_ports, out_ports,
+            machine_mappings, main_mem_accesses=main_memory_accesses)
 
         return "//" + __name__ \
                + self.nl \
@@ -67,7 +69,8 @@ class GenDirInPorts(TemplateHandler):
                                        main_memory_accesses,
                                        Util.get_message_data_var(cluster),
                                        Util.get_active_cache_line(arch),
-                                       out_ports
+                                       out_ports,
+                                       machine_mappings
                                        ) \
                + self.nl \
                + fsm_in_ports \
@@ -81,9 +84,10 @@ class GenDirInPorts(TemplateHandler):
             message_data_var: str,
             cache_line: str,
             out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
     ) -> str:
 
-        slicc_tree_gen = GenSLICCTree(cluster, arch, "", out_ports, allow_port_popping=False)
+        slicc_tree_gen = GenSLICCTree(cluster, arch, False, "", out_ports, machine_mappings, allow_port_popping=False)
         body_strs = []
         for (state, mem_access), operation_tree in main_mem_accesses.items():
 

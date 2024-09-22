@@ -38,7 +38,7 @@ from Backend.SLICC.ModularSLICC.dir.GenDirBase import GenDirBase
 class ModularDir(GenDirBase):
     TemplateDir = "TempSLICC/machines"
 
-    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str):
+    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, machine_mappings: dict[str, str]):
         GenDirBase.__init__(self, self.TemplateDir)
 
         file_name = file_name.split(".")[0] + "_dir.sm"
@@ -54,7 +54,7 @@ class ModularDir(GenDirBase):
         # this first even though we want them ordered last...
         # TODO this should be refactored to be handled more elegantly
         main_memory_accesses = {}
-        dir_in_ports_str = self.gen_dir_in_ports_str(cluster, arch, in_ports, out_ports, main_memory_accesses)
+        dir_in_ports_str = self.gen_dir_in_ports_str(cluster, arch, in_ports, out_ports, machine_mappings, main_memory_accesses)
 
         with open(file_name, "w") as slicc_file:
             # Write header

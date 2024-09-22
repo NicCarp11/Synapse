@@ -58,6 +58,7 @@ class GenMachineInPorts:
             arch: FlatArchitecture,
             in_ports: 'OrderedDict[str, str]',
             out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
             main_mem_accesses: Dict[Tuple[str, str], DiGraph] = None,
     ) -> str:
         if main_mem_accesses is None:
@@ -66,7 +67,7 @@ class GenMachineInPorts:
         for net_name, in_port in in_ports.items():
             nets.append(
                 GenMachineInPorts._gen_in_port(
-                    temp_h, net_name, in_port, cluster, arch, out_ports, main_mem_accesses))
+                    temp_h, net_name, in_port, cluster, arch, cache, arch_name, out_ports, machine_mappings, main_mem_accesses))
         return temp_h.nl.join(nets)
 
     @staticmethod
@@ -77,13 +78,14 @@ class GenMachineInPorts:
             cluster: Cluster,
             arch: FlatArchitecture,
             out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
             main_mem_accesses: Dict[Tuple[str, str], DiGraph],
     ) -> str:
         # This is *extremely* TODO/WIP
         # For now, let's try just generating the behaviour for every possible
         state_strs = []
         first = True
-        slicc_tree_gen = GenSLICCTree(cluster, arch, port_name, out_ports, allow_port_popping=True)
+        slicc_tree_gen = GenSLICCTree(cluster, arch, cache, port_name, out_ports, machine_mappings, allow_port_popping=True)
 
         transitions_by_state = MultiDict()
         for transition in arch.get_architecture_transitions():

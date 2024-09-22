@@ -7,7 +7,7 @@ from DataObjects.ClassCluster import Cluster
 class ModularProxy(GenProxyBase):
     TemplateDir = "TempSLICC/machines"
 
-    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, controller_id: int, cache_id: None | int = None):
+    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, id_mapping: dict[str, str], cache_id: None | int = None):
         GenProxyBase.__init__(self, self.TemplateDir)
 
         file_name = file_name.split(".")[0] + f"_proxy{cache_id or ''}.sm"
@@ -15,7 +15,7 @@ class ModularProxy(GenProxyBase):
         out_ports = Util.get_out_ports(arch, True)
         in_ports = Util.get_in_ports(arch, True)
 
-        machine_id = f"L{controller_id}Cache";
+        machine_id = id_mapping[str(arch)]
 
         with open(file_name, "w") as slicc_file:
             # Write header
@@ -30,7 +30,7 @@ class ModularProxy(GenProxyBase):
                             self.gen_proxy_tbe_str(arch, machine_id) + self.nl,
                             self.gen_proxy_static_fns_str(arch, machine_id) + self.nl,
                             self.gen_proxy_out_ports_str(out_ports) + self.nl,
-                            self.gen_proxy_in_ports_str(cluster, arch, in_ports, out_ports) + self.nl,
+                            self.gen_proxy_in_ports_str(cluster, arch, in_ports, out_ports, id_mapping) + self.nl,
                             self.gen_proxy_actions_str(cluster, arch, in_ports, out_ports) + self.nl,
                             self.gen_proxy_transitions_str(arch, in_ports),
                         ]),

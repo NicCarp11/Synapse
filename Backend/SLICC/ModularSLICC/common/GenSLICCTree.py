@@ -73,6 +73,7 @@ class GenSLICCTree(TemplateHandler, Debug):
             arch: FlatArchitecture,
             port_name: str,
             out_ports: 'OrderedDict[str, str]',
+            machine_mappings: dict[str, str],
             allow_port_popping: bool = True,
             set_final_state: bool = True):
         Debug.__init__(self)
@@ -80,7 +81,7 @@ class GenSLICCTree(TemplateHandler, Debug):
         self.cluster = cluster
         self.arch = arch
         self.port_name = port_name
-        self.pcc_to_slicc = GenPCCToSLICC(cluster, arch, out_ports)
+        self.pcc_to_slicc = GenPCCToSLICC(cluster, arch, cache, out_ports, machine_mappings)
         self.allow_port_popping = allow_port_popping
         self.set_final_state = set_final_state
 
