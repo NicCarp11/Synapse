@@ -38,13 +38,12 @@ from Backend.SLICC.ModularSLICC.cache.GenCacheBase import GenCacheBase
 class ModularCache(GenCacheBase):
     TemplateDir = "TempSLICC/machines"
 
-    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str):
+    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, controller_id: int, cache_id: None | int = None):
         GenCacheBase.__init__(self, self.TemplateDir)
 
         file_name = file_name.split(".")[0] + "_cache.sm"
 
-        out_ports = Util.get_out_ports(arch)
-        in_ports = Util.get_in_ports(arch)
+        machine_id = f"L{controller_id}Cache";
 
         with open(file_name, "w") as slicc_file:
             # Write header
