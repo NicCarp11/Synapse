@@ -105,7 +105,7 @@ class GenMachineInPorts:
                 if not first_guard:
                     prefix = f"{temp_h.nl}{temp_h.tab}}} else {prefix}"
                 prefix = temp_h.tab + prefix
-                slicc_tree = slicc_tree_gen.gen_operation_tree_from_trans(transitions_by_guard[guard])
+                slicc_tree = slicc_tree_gen.gen_operation_tree_from_trans(sorted(transitions_by_guard[guard], key=GenMachineInPorts.op_plan))
                 if Util.must_access_memory(cache):
                     GenMachineInPorts.replace_mem_ops(temp_h, arch, cache, slicc_tree, Util.get_active_cache_line(arch),
                                                       transitions_by_guard[guard], main_mem_accesses, port_name)
@@ -145,6 +145,11 @@ class GenMachineInPorts:
                                         " getEntry(LineAddress)," if arch.machine.check_cache() else "",
                                         ]) \
                + temp_h.nl
+
+    @staticmethod
+    def op_plan(t: Transition_v2) -> str:
+        return " -> ".join(str(o) for o in t.operations)
+
 
     @staticmethod
     def find_mem_access_subtree_roots(operation_tree: DiGraph, is_access: Callable[[object], bool]) \

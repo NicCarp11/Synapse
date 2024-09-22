@@ -61,10 +61,10 @@ def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
 
     ModularDir(cluster, directory, file_name)
 
-    for idx, proxy in enumerate(proxies):
+    for idx, proxy in enumerate(sorted(proxies, key=str)):
         ModularProxy(cluster, proxy, file_name, (idx + 1 + len(caches)))
 
-    for idx, cache in enumerate(caches):
+    for idx, cache in enumerate(sorted(caches, key=str)):
         ModularCache(cluster, cache, file_name, (idx + 1) if len(caches) > 1 else None)
 
     for arch in cluster.get_machine_architectures():
