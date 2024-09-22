@@ -15,7 +15,8 @@ class GenProxyStaticFns(TemplateHandler):
         const_str += self.string_repl_keys(self.open_template(GenProxyStaticFns.template_file),
                                            [str(arch.init_state),
                                             Util.get_active_cache_line(arch),
-                                            machine_id
+                                            machine_id,
+                                            "ProxyState"
                                             ]
                                            )
         return const_str + self.nl

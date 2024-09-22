@@ -17,22 +17,11 @@ class GenProxyStruct(TemplateHandler):
         TemplateHandler.__init__(self, handler_dir)
 
     def gen_proxy_struct_str(self, arch: FlatArchitecture) -> str:
+        # In general only the members of that come from the directory should be in here
+        #  however there seems to be no way to determine where variables came from
         const_str = "//" + __name__ + self.nl
-        body = None
-        for var_name, variable in arch.machine.variables.items():
-            # For caches, put only the stable states and the cache line in the Entry.
-            # The other variables should go in the TBE.
-
-            if var_name == Util.get_active_cache_line(arch):
-                method_fct = SLICCTokens.data_type_map.get(variable.getText(), '_pass_node')
-                method = getattr(GenMachineStruct, method_fct)
-                res = method(variable)
-                if res:
-                    body = self.nl + self.tab + res
-                    break
-        assert body is not None, "No cache line found"
-
+        body = GenMachineStruct.gen_machine_struct_body_str(self, arch)
         const_str += self.string_repl_keys(self.open_template(GenProxyStruct.template_file),
-                                           ["", "Cache", body]
+                                           ["", "Proxy", body]
                                            )
         return const_str + self.nl

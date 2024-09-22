@@ -264,7 +264,7 @@ def reverse_direction(direction: str) -> str:
 def get_entry_variable(arch: BaseArchitecture, var_name: str, var_str: str) -> str:
     # Variable is stored in the cache entry if we are a dir or if it is the cache line.
     # Otherwise, it should be kept in the TBE/MSHR.
-    if arch.machine.check_dir() or var_name == get_active_cache_line(arch):
+    if not cache or var_name == get_active_cache_line(arch) or isinstance(arch, HHDirArchitecture):
         return f"getEntry(LineAddress).{var_str}"
     else:
         # accessing the tbe requires it to be valid, of course
@@ -290,10 +290,10 @@ def check_cache_valid() -> str:
   if (cache.cacheAvail(LineAddress)) {
     trigger(Event:allocCacheEntry, LineAddress, getEntry(LineAddress), tbe);
   } else {
-    Addr victim := L2cache.cacheProbe(LineAddress);
+    Addr victim := cache.cacheProbe(LineAddress);
     Entry victim_cache_entry := getEntry(victim);
     //trigger(Event:Replacement, victim, victim_cache_entry, TBEs[victim]);
-    panic("Replacement is not implemented");
+    error("Replacement is not implemented");
   }
 }"""
 

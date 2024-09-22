@@ -44,7 +44,9 @@ class GenCacheStaticFns(TemplateHandler):
         const_str = "//" + __name__ + self.nl
         const_str += self.string_repl_keys(self.open_template(GenCacheStaticFns.template_file),
                                            [str(arch.init_state),
-                                            Util.get_active_cache_line(arch)
+                                            Util.get_active_cache_line(arch),
+                                            machine_id,
+                                            "CacheState"
                                             ]
                                            )
         return const_str + self.nl
