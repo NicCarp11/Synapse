@@ -45,15 +45,14 @@ class GenDirStateDecl(TemplateHandler):
         const_str = "//" + __name__ + self.nl
         state_declaration_body = GenMachineStateDecl.gen_machine_state_decl_body_str(self, arch) \
                                  + self.nl \
-                                 + ''.join([self.string_repl_keys(self.open_template("state_declaration_entry.sm"),
+                                 + self.nl.join([self.tab + self.string_repl_keys(self.open_template("state_declaration_entry.sm"),
                                                                     [state_name, "Busy"]
                                                                     )
-                                            + self.nl
                                             for state_name in main_mem_induced_states
                                             ]
                                            )
         init_state = str(arch.init_state)
         const_str += self.string_repl_keys(self.open_template(GenDirStateDecl.template_file),
-                                           ["Directory", init_state, self.add_tabs(state_declaration_body, 1)]
+                                           ["Directory", init_state, state_declaration_body]
                                            )
         return const_str + self.nl
