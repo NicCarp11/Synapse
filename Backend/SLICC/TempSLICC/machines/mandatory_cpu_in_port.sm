@@ -3,6 +3,7 @@ in_port(mandatory_in, RubyRequest, mandatoryQueue) {
     peek(mandatory_in, RubyRequest, block_on="LineAddress") {
       Addr LineAddress := in_msg.LineAddress;
       Entry entry := getEntry(LineAddress);
+      DPRINTF(RubySlicc, "mandatory_in: %s %s (addr: %#x)\n", in_msg.Type, getState(TBEs[LineAddress], entry, LineAddress), LineAddress);
       if (is_invalid(entry) &&
           cache.cacheAvail(LineAddress) == false ) {
         Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
