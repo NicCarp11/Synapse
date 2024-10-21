@@ -162,6 +162,6 @@ class GenCacheInPorts(TemplateHandler):
             transitions_strs.append(transition_str)
 
         return self.add_tabs(" else ".join(transitions_strs)
-                             + f" else {{{self.nl}{self.tab}"
-                             + f"{Util.gen_stall_str(self, arch, 'mandatory_in')}{self.nl}}}",
+                             + f" else {{{self.nl}"
+                             + f"{self.add_tabs(Util.gen_recycle_str(self, True, 'mandatory_in'), 1)}{self.nl}}}",
                              indent_level)

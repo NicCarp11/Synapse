@@ -212,6 +212,10 @@ def gen_stall_str(temp_h: TemplateHandler, arch: BaseArchitecture, port: str) ->
         assert arch.machine.check_dir()
         return f"trigger(Event:Stall{port}, LineAddress, tbe){temp_h.sem}"
 
+def gen_recycle_str(temp_h: TemplateHandler, cache: bool, port: str) -> str:
+    return f'DPRINTF(RubySlicc, "recycling %s on {port} (addr: %#x)\\\\n", st, LineAddress);{temp_h.nl}' \
+           f"{port}.recycle(clockEdge(), cyclesToTicks(recycleLatency));{temp_h.nl}" \
+           f"{gen_progress_str(temp_h, cache)}"
 
 def gen_progress_str(temp_h: TemplateHandler, arch: BaseArchitecture) -> str:
     if arch.machine.check_cache():
@@ -277,8 +281,10 @@ def check_tbe_valid(temp_h: TemplateHandler, arch: BaseArchitecture, port: str) 
            f"{temp_h.tab}if (TBEs.areNSlotsAvailable(1, clockEdge())) {{{temp_h.nl}" \
            f"{temp_h.tab * 2}{gen_tbe_alloc_str(temp_h, arch)}{temp_h.nl}" \
            f"{temp_h.tab}}} else {{{temp_h.nl}" \
-           f"{temp_h.tab * 2}{gen_stall_str(temp_h, arch, port)}{temp_h.nl}" \
+           f"{temp_h.add_tabs(gen_recycle_str(temp_h, cache, port), 2)}{temp_h.nl}" \
            f"{temp_h.tab}}}{temp_h.nl}}}"
+
+
 
 def check_cache_valid() -> str:
     #return f"if (is_invalid(cache_entry)) {{{temp_h.nl}" \
