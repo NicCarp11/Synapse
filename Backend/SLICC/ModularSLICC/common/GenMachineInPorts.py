@@ -87,6 +87,12 @@ class GenMachineInPorts:
         first = True
         slicc_tree_gen = GenSLICCTree(cluster, arch, cache, port_name, out_ports, machine_mappings, allow_port_popping=True)
 
+        msgset = None
+        for netname, msgs in Util.get_msg_port_mapping(cluster).items():
+            if net_name.startswith(netname):
+                msgset = msgs
+        assert msgset is not None
+
         transitions_by_state = MultiDict()
         for transition in arch.get_architecture_transitions():
             # Nicolai, if you ever read this, overriding the "=" operator like this is very nasty lol
@@ -98,7 +104,11 @@ class GenMachineInPorts:
             for transition in transitions_by_state.get(state, []):
                 if isinstance(transition.guard, BaseMessage) \
                         and str(transition.guard) in arch.global_arch.network.base_message_dict:
-                    transitions_by_guard[str(transition.guard)] = transition
+                    if str(transition.guard) in msgset:
+                        transitions_by_guard[str(transition.guard)] = transition
+
+            if len(transitions_by_guard) <= 0:
+                continue
 
             op_string = ""
             first_guard = True
@@ -117,7 +127,7 @@ class GenMachineInPorts:
 
             if op_string:
                 op_string += f"{temp_h.nl}{temp_h.tab}}} else {{{temp_h.nl}{temp_h.tab * 2}" \
-                             f"{Util.gen_stall_str(temp_h, arch, port_name)}{temp_h.nl}{temp_h.tab}}}"
+                             f'error("Invalid transition");{temp_h.nl}{temp_h.tab}}}'
             else:
                 # Have not generated a body for this clause as there are no expected transitions
                 op_string = f"{temp_h.tab}{Util.gen_stall_str(temp_h, arch, port_name)}"
@@ -135,9 +145,12 @@ class GenMachineInPorts:
 
             state_strs.append(state_str)
 
-        else_body = temp_h.add_tabs(f"{temp_h.tab}{Util.gen_stall_str(temp_h, arch, port_name)}{temp_h.nl}}}",
-                                    3)
-        state_strs.append(f" else {{{temp_h.nl}{else_body}")
+        else_body = temp_h.add_tabs(f"{Util.gen_stall_str(temp_h, cache, port_name)}",3)
+        # else_body = temp_h.add_tabs(f'error("Invalid transition");',3)
+        if not first:
+            state_strs.append(f" else {{{temp_h.nl}{temp_h.tab}{else_body}{temp_h.nl}{temp_h.tab * 3}}}")
+        else:
+            state_strs.append(temp_h.add_tabs(f'error("Invalid transition");',3))
 
         return temp_h.string_repl_keys(temp_h.open_template(GenMachineInPorts.template_file),
                                        [port_name,

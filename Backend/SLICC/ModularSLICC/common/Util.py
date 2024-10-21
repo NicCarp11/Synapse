@@ -38,6 +38,7 @@ from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from DataObjects.Architecture.ArchitectureClassification import ArchitectureClassification
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.Architecture.ClassGlobalBaseArchitecture import GlobalBaseArchitecture
+from DataObjects.ClassCluster import Cluster
 from DataObjects.ClassState import State
 from DataObjects.FlowDataTypes.ClassBaseAccess import Access
 from DataObjects.States.ClassCompoundState import CompoundState
@@ -303,3 +304,23 @@ def get_message_size(message_dict: Dict[str, str], cluster: Cluster) -> str:
         return "MessageSizeType:Data"
     else:
         return "MessageSizeType:Control"
+
+def get_msg_port_mapping(cluster: Cluster) -> dict[str, set[str]]:
+    msgs = {}
+    for arch in cluster.get_machine_architectures():
+        for transition in arch.get_architecture_transitions():
+            operations = transition.operations
+            for idx, op in enumerate(operations):
+                if str(op) == 'MCAST_' or str(op) == 'SEND_':
+                    network = str(op.getChildren()[0])
+                    msg_name = str(op.getChildren()[1])
+                    msg_type = None
+                    for op2 in reversed(operations[:idx]):
+                        if str(op2) == 'ASSIGN_' and str(op2.getChildren()[0]) == msg_name:
+                            msg_ctor = op2.getChildren()[2]
+                            assert str(msg_ctor) == 'MSGCSTR_'
+                            msg_type = str(msg_ctor.getChildren()[1])
+                            break
+                    assert msg_type is not None
+                    msgs.setdefault(network, set()).add(msg_type)
+    return msgs
