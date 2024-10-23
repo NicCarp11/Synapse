@@ -286,23 +286,14 @@ def check_tbe_valid(temp_h: TemplateHandler, arch: BaseArchitecture, port: str) 
 
 
 
-def check_cache_valid() -> str:
+def check_cache_valid(temp_h: TemplateHandler) -> str:
     #return f"if (is_invalid(cache_entry)) {{{temp_h.nl}" \
     #       f"{temp_h.tab}if (cache.cacheAvail(in_msg.addr)) {{{temp_h.nl}" \
     #       f"{temp_h.tab * 2}{gen_tbe_alloc_str(temp_h, cache)}{temp_h.nl}" \
     #       f"{temp_h.tab}}} else {{{temp_h.nl}" \
     #       f"{temp_h.tab * 2}{gen_stall_str(temp_h, cache, port)}{temp_h.nl}" \
     #       f"{temp_h.tab}}}{temp_h.nl}}}"#
-    return """if (is_invalid(getEntry(LineAddress))) {
-  if (cache.cacheAvail(LineAddress)) {
-    trigger(Event:allocCacheEntry, LineAddress, getEntry(LineAddress), tbe);
-  } else {
-    Addr victim := cache.cacheProbe(LineAddress);
-    Entry victim_cache_entry := getEntry(victim);
-    //trigger(Event:Replacement, victim, victim_cache_entry, TBEs[victim]);
-    error("Replacement is not implemented");
-  }
-}"""
+    return f"if (is_invalid(getEntry(LineAddress))) {{{temp_h.nl + temp_h.tab}trigger(Event:allocCacheEntry, LineAddress, getEntry(LineAddress), tbe);{temp_h.nl}}}"
 
 
 def get_message_size(message_dict: Dict[str, str], cluster: Cluster) -> str:

@@ -172,6 +172,15 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
             self.constructed_messages[var_name] = message_dict
             return None
+        elif var_name == NestedDeferMessage.proxy_key:
+            if not str(operation.getChildren()[2]) in self.arch.global_arch.network.base_message_dict:
+                return f"//Skipped {var_name} := {str(operation.getChildren()[2])}"
+            right_side, right_type = self.gen_right_assignment(operation.getChildren()[2])
+            assert right_type == ProtoParserBase.t_msg
+            result = ""
+            for m in SLICCTokens.proxy_key_fields.keys():
+                result += Util.get_entry_variable(self.arch, self.cache, var_name, f"{var_name}_{m} := {right_side}.{SLICCTokens.field_map.get(m, m)}" + self.end)
+            return result
         elif var_name in self.arch.machine.variables:
             return Util.get_entry_variable(self.arch, var_name, self._exist_var_assignment(var_name, operation))
         elif var_name in self.local_variables:

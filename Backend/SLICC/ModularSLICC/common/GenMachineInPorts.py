@@ -60,6 +60,7 @@ class GenMachineInPorts:
             out_ports: 'OrderedDict[str, str]',
             machine_mappings: dict[str, str],
             main_mem_accesses: Dict[Tuple[str, str], DiGraph] = None,
+            evict_code: dict[str, str] = {}
     ) -> str:
         if main_mem_accesses is None:
             main_mem_accesses = {}
@@ -67,7 +68,7 @@ class GenMachineInPorts:
         for net_name, in_port in in_ports.items():
             nets.append(
                 GenMachineInPorts._gen_in_port(
-                    temp_h, net_name, in_port, cluster, arch, cache, arch_name, out_ports, machine_mappings, main_mem_accesses))
+                    temp_h, net_name, in_port, cluster, arch, cache, arch_name, out_ports, machine_mappings, main_mem_accesses, evict_code))
         return temp_h.nl.join(nets)
 
     @staticmethod
@@ -80,12 +81,18 @@ class GenMachineInPorts:
             out_ports: 'OrderedDict[str, str]',
             machine_mappings: dict[str, str],
             main_mem_accesses: Dict[Tuple[str, str], DiGraph],
+            evict_code: dict[str, str]
     ) -> str:
         # This is *extremely* TODO/WIP
         # For now, let's try just generating the behaviour for every possible
         state_strs = []
         first = True
         slicc_tree_gen = GenSLICCTree(cluster, arch, cache, port_name, out_ports, machine_mappings, allow_port_popping=True)
+
+        evict_section = ""
+        for port, section in evict_code.items():
+            if net_name.startswith(port):
+                evict_section = section + temp_h.nl
 
         msgset = None
         for netname, msgs in Util.get_msg_port_mapping(cluster).items():
@@ -156,8 +163,8 @@ class GenMachineInPorts:
                                        [port_name,
                                         "CoherenceMessage",
                                         net_name,
-                                        "".join(state_strs),
-                                        " getEntry(LineAddress)," if arch.machine.check_cache() else "",
+                                        evict_section + "".join(state_strs),
+                                        " getEntry(LineAddress)," if cache else "",
                                         ]) \
                + temp_h.nl
 

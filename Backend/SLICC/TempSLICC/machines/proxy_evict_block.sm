@@ -1,0 +1,11 @@
+// Start Evict handler
+if($0$) {
+  if (is_invalid(entry) && cache.cacheAvail(LineAddress) == false ) {
+    Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
+    TBE tbe := TBEs[LineAddress];
+    Entry entry := getEntry(LineAddress);
+    State st := getState(tbe, entry, LineAddress);
+$1$
+  }
+}
+// End Evict Handler

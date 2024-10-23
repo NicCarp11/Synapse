@@ -128,7 +128,7 @@ class GenSLICCTree(TemplateHandler, Debug):
                 assert state_map is not None
                 if transition.guard in state_map:
                     if invalid:
-                        alloc_str = Util.check_cache_valid()
+                        alloc_str = Util.check_cache_valid(self)
                         operation_tree.add_node(alloc_str, op_str=alloc_str)
                         operation_tree.add_edge(cur_node, alloc_str)
                         cur_node = alloc_str

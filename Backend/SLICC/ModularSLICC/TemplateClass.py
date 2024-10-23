@@ -67,6 +67,19 @@ class TemplateHandler:
         tab_string = self.tab * count
         return self.nl.join([tab_string + st for st in string.splitlines()])
 
+    def fix_tabs(self, string: str, base_ident=0):
+        current_level = base_ident
+        result = []
+        for s in string.splitlines():
+            s = s.strip()
+            if s.startswith("}"):
+                current_level -= 1
+            result.append((current_level * self.tab) + s)
+            if s.endswith("{"):
+                current_level += 1
+
+        return self.nl.join(result)
+
     @staticmethod
     def test_int(string):
         try:

@@ -22,7 +22,7 @@ class ModularProxy(GenProxyBase):
             slicc_file.write(self.gen_proxy_header_str(arch, machine_id))
             # Write (indented) body
             slicc_file.write(
-                self.add_tabs(
+                self.fix_tabs(
                     ''.join([
                             self.gen_proxy_state_decl_str(arch, machine_id) + self.nl,
                             self.gen_proxy_events_str(arch, in_ports) + self.nl,
