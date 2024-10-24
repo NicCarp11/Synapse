@@ -100,7 +100,7 @@ class GenProxyInPorts(TemplateHandler):
         for state_name in sorted(transition_map.keys()):
             transitions = sorted(transition_map[state_name], key=GenMachineInPorts.op_plan)
             slicc_tree_gen = GenSLICCTree(cluster, arch, True, port_name, out_ports,
-                                          machine_mappings, allow_port_popping=True, set_final_state=True)
+                                          machine_mappings, allow_port_popping=False, set_final_state=True)
 
             op_str = ""
 

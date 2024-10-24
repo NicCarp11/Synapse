@@ -1,7 +1,9 @@
 // Start Evict handler
 if($0$) {
   if (is_invalid(getEntry(LineAddress)) && cache.cacheAvail(LineAddress) == false ) {
-    Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
+    Addr victim := cache.cacheProbe(in_msg.LineAddress);
+    DPRINTF(RubySlicc, "Evicting %#x (%s) for %#x\\n", victim, getState(TBEs[victim], getEntry(victim), victim), LineAddress);
+    Addr LineAddress := victim;
     TBE tbe := TBEs[LineAddress];
     Entry entry := getEntry(LineAddress);
     State st := getState(tbe, entry, LineAddress);
