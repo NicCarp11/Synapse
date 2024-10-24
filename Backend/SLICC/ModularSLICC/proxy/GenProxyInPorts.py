@@ -38,7 +38,7 @@ class GenProxyInPorts(TemplateHandler):
         alloc_ports = dict()
         for port, msgs in port_map.items():
             guards = []
-            for s, m in alloc_states:
+            for s, m in sorted(alloc_states):
                 if m in msgs:
                     # alloc_ports.setdefault(port, set()).add((s, m))
                     guards.append(f"(st == State:{s} && in_msg.Type == CoherenceMessageType:{m})")
@@ -97,8 +97,8 @@ class GenProxyInPorts(TemplateHandler):
 
         transitions_strs = []
 
-        for state_name, transitions in transition_map.items():
-
+        for state_name in sorted(transition_map.keys()):
+            transitions = sorted(transition_map[state_name], key=GenMachineInPorts.op_plan)
             slicc_tree_gen = GenSLICCTree(cluster, arch, True, port_name, out_ports,
                                           machine_mappings, allow_port_popping=True, set_final_state=True)
 
