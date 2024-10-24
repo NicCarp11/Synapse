@@ -62,7 +62,7 @@ def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
     machine_ids = {
         str(directory): "Directory"
     }
-    for idx, cntrl in enumerate([*proxies, *caches]):
+    for idx, cntrl in enumerate([*sorted(proxies, key=str), *sorted(caches, key=str)]):
         machine_ids[str(cntrl)] = f"L{idx}Cache"
 
     ModularDir(cluster, directory, file_name, machine_ids)

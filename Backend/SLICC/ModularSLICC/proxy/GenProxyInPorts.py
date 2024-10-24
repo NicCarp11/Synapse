@@ -41,7 +41,7 @@ class GenProxyInPorts(TemplateHandler):
             for s, m in alloc_states:
                 if m in msgs:
                     # alloc_ports.setdefault(port, set()).add((s, m))
-                    guards.append(f"(st == State:{s} && in_msg.Type == CoherenceMsg:{m})")
+                    guards.append(f"(st == State:{s} && in_msg.Type == CoherenceMessageType:{m})")
             if len(guards) > 0:
                 alloc_ports[port] = self.add_tabs(self.string_repl_keys(self.open_template("proxy_evict_block.sm"),
                             [" || ".join(guards), self._gen_evict_in_port(cluster, arch, out_ports, machine_mappings, f"{port}from_in")
