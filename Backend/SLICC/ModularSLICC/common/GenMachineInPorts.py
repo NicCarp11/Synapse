@@ -134,7 +134,8 @@ class GenMachineInPorts:
 
             if op_string:
                 op_string += f"{temp_h.nl}{temp_h.tab}}} else {{{temp_h.nl}{temp_h.tab * 2}" \
-                             f'error("Invalid transition");{temp_h.nl}{temp_h.tab}}}'
+                             f'{Util.gen_stall_str(temp_h, cache, port_name)}{temp_h.nl}{temp_h.tab}}}'
+                             #f'error("Invalid transition");{temp_h.nl}{temp_h.tab}}}'
             else:
                 # Have not generated a body for this clause as there are no expected transitions
                 op_string = f"{temp_h.tab}{Util.gen_stall_str(temp_h, arch, port_name)}"
