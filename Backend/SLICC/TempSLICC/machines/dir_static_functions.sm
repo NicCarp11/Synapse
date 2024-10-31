@@ -23,6 +23,10 @@ State getState(TBE tbe, Addr LineAddress) {
 }
 
 void setState(TBE tbe, Addr LineAddress, State state) {
+  DPRINTF(RubySlicc, "%s -> %s (addr: %#x)\n", getState(tbe, LineAddress), state, LineAddress);
+  //if (state != getState(tbe, LineAddress)) {
+  //  wakeUpAllBuffers(LineAddress);
+  //}
   if (is_valid(tbe)) {
     tbe.TBEState := state;
   }

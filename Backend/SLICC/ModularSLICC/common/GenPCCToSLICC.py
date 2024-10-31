@@ -332,7 +332,8 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
     @staticmethod
     def gen_pop_net(temp_h: TemplateHandler, port_name: str) -> str:
-        return f"{port_name}.dequeue(clockEdge()){temp_h.end}"
+        return (f'DPRINTF(RubySlicc, "Popping %s %s on {port_name} (addr: %#x)\\\\n", in_msg.Type, in_msg.Sender, LineAddress);{temp_h.nl}' if not "mandatory" in port_name else "") + \
+            f"{port_name}.dequeue(clockEdge()){temp_h.end}"
 
     ### Vector set functions
     def gen_set_function(self, operation: CommonTree) -> str:
