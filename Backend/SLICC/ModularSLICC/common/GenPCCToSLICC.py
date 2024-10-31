@@ -80,6 +80,9 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
         # These variables do need to be reset for every new transition
         self.cur_guard_str: str = ""
+        self.proxy_keys = {}
+        if isinstance(arch, NestedDeferMessage):
+            self.proxy_keys = arch.proxy_keys.values()
 
 
     def new_transition(self, guard: str):
@@ -172,7 +175,7 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
             self.constructed_messages[var_name] = message_dict
             return None
-        elif var_name == NestedDeferMessage.proxy_key:
+        elif var_name in self.proxy_keys:
             if not str(operation.getChildren()[2]) in self.arch.global_arch.network.base_message_dict:
                 return f"//Skipped {var_name} := {str(operation.getChildren()[2])}"
             right_side, right_type = self.gen_right_assignment(operation.getChildren()[2])
@@ -224,6 +227,18 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             return right_assignment, ProtoParserBase.t_int
 
         # Variable reassignments
+        elif right_assignment in self.constructed_messages:
+            msg = self.constructed_messages[right_assignment]
+            msg_type = msg["Type"].split(":")[1]
+            _, msg_type = self._in_msg_assignment(msg_type, operation)
+            field = "".join(childsToStringList(operation))[1:]
+            field = SLICCTokens.field_map.get(field, field)
+            replacement = msg[field]
+            return replacement, msg_type
+        elif right_assignment in self.proxy_keys:
+            m_name = "".join(childsToStringList(operation))[1:]
+            m_type = SLICCTokens.proxy_key_fields[m_name]
+            return Util.get_entry_variable(self.arch, self.cache, right_assignment,  f"{right_assignment}_{m_name}"), m_type
         elif right_assignment in self.arch.machine.variables:
             return Util.get_entry_variable(self.arch, right_assignment, right_assignment), \
                    self.arch.machine.variables[right_assignment]
@@ -250,7 +265,10 @@ class GenPCCToSLICC(TemplateHandler, Debug):
         if str(operation) in self.arch.global_arch.network.base_message_dict:
             field = ''.join(childsToStringList(operation))
             field = SLICCTokens.field_map.get(field, field)
-            return f"{SLICCTokens.k_in_msg}{field}"
+            return f"{SLICCTokens.k_in_msg}.{field}"
+        elif str(operation) in self.proxy_keys:
+            m_name = "".join(childsToStringList(operation))[1:]
+            return Util.get_entry_variable(self.arch, self.cache, str(operation),f"{str(operation)}_{m_name}")
         elif str(operation) in self.arch.machine.variables:
             right_value = str(operation)
             right_type = self.arch.machine.variables[right_value]

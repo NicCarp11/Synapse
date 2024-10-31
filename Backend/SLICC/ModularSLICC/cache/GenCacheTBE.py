@@ -56,7 +56,7 @@ class GenCacheTBE(TemplateHandler,):
             if var_name != Util.get_active_cache_line(arch):
                 method_fct = SLICCTokens.data_type_map.get(variable.getText(), '_pass_node')
                 method = getattr(GenMachineStruct, method_fct)
-                res = method(variable)
+                res = method(variable, arch)
                 if res:
                     body_strs.append(self.tab + res)
         const_str += self.string_repl_keys(self.open_template(GenCacheTBE.template_file),

@@ -49,7 +49,7 @@ class GenMachineStruct:
             # For now, only generating the structure entry itself
             method_fct = SLICCTokens.data_type_map.get(variable.getText(), '_pass_node')
             method = getattr(GenMachineStruct, method_fct)
-            res = method(variable)
+            res = method(variable, arch)
             if res:
                 body_strs.append(temp_h.tab + res)
 
@@ -60,21 +60,21 @@ class GenMachineStruct:
     ####################################################################################################################
 
     @staticmethod
-    def _pass_node(definition: CommonTree) -> bool:
+    def _pass_node(definition: CommonTree, arch: FlatArchitecture) -> bool:
         return False
 
     @staticmethod
-    def _set_init_state(definition: CommonTree) -> bool:
+    def _set_init_state(definition: CommonTree, arch: FlatArchitecture) -> bool:
         # The initial state has already been generated in [GenDirStateDecl]
         return False
 
     @staticmethod
-    def _gen_cache_line(definition: CommonTree) -> str:
+    def _gen_cache_line(definition: CommonTree, arch: FlatArchitecture) -> str:
         tokens = definition.getChildren()
         return f"{SLICCTokens.st_data} {tokens[-1].getText()}, desc=\"... TODO ...\";"
 
     @staticmethod
-    def _gen_identifier(definition: CommonTree) -> str:
+    def _gen_identifier(definition: CommonTree, arch: FlatArchitecture) -> str:
         tokens = definition.getChildren()
         if len(tokens) > 1:
             return GenMachineStruct._gen_net_dest(tokens)
@@ -88,7 +88,7 @@ class GenMachineStruct:
         return f"{SLICCTokens.st_net_dest} {tokens[0].getText()}, desc=\"... TODO ...\";"
 
     @staticmethod
-    def _gen_int(definition: CommonTree) -> str:
+    def _gen_int(definition: CommonTree, arch: FlatArchitecture) -> str:
         # Unlike Murphi, SLICC is not a verification engine and therefore does not
         # require ints to be bounded
         tokens = definition.getChildren()
@@ -96,9 +96,17 @@ class GenMachineStruct:
                "desc=\"...TODO...\";"
 
     @staticmethod
-    def _gen_bool(definition: CommonTree) -> str:
+    def _gen_bool(definition: CommonTree, arch: FlatArchitecture) -> str:
         raise NotImplementedError
 
     @staticmethod
-    def _gen_msg(definition: CommonTree) -> str:
-        return "".join(objListToStringList([definition]))
+    def _gen_msg(definition: CommonTree, arch: FlatArchitecture) -> str:
+        if str(definition.getChildren()[0]) in getattr(arch, "proxy_keys", {}).values():
+            result = ""
+            for m_name, m_type in SLICCTokens.proxy_key_fields.items():
+                assert m_type == ProtoParserBase.t_id
+                if len(result) > 0:
+                    result += "\n"
+                result += f"{SLICCTokens.st_mach_id} {str(definition.getChildren()[0])}_{m_name}, desc=\"... TODO ...\";"
+            return result
+        raise NotImplementedError
