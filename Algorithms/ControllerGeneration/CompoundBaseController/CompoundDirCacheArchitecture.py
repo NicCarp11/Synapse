@@ -242,12 +242,16 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
 
         # The architecture is
     def get_arch_list(self):
-        # TODO Murphi backend breaks with this; but is this change alright?
+        # TODO Murphi backend breaks with following line;
+        #      but is this change alright?
+        #      Perhaps can find a better fix
         #return [self, self.cache, self.directory]
         if isinstance(self.directory, ProxyDirArchitecture):
-            return [self, self.directory]
+            # L1: should return cache arch too, otherwise, NrCacheL1 is too small
+            return [self, self.directory, self.cache]
         else:
-            return [self, self.cache]
+            # L2: when also return directory arch, a wrong NoneType global_arch constant is created
+            return [self, self.cache] #, self.directory]
 
     def merge_machine_definitions(self):
         # Update the machine definition of the proxy machine

@@ -37,17 +37,28 @@ from Algorithms.ControllerGeneration.General.DeferMessage.BaseDeferMessage impor
 
 
 class NestedDeferMessage(BaseDeferMessage):
-    proxy_key = 'proxy_msg'
+    __proxy_key = 'proxy_msg'
 
-    def __init__(self, base_arch: BaseArchitecture):
+    def __init__(self, base_arch: BaseArchitecture, arch_tuple: List[BaseArchitecture]):
         BaseDeferMessage.__init__(self)
-        self.update_base_arch_global_variable(base_arch)
+        self.update_base_arch_global_variable(base_arch, arch_tuple)
 
-    def update_base_arch_global_variable(self, base_arch: BaseArchitecture):
-        new_operation = CommonTree(CommonToken(text=ProtoParserBase.t_msg))
-        # Left side assignment
-        new_operation.addChild(CommonTree(CommonToken(text=self.proxy_key)))
-        base_arch.machine.variables[self.proxy_key] = new_operation
+    def __proxy_key_from_arch(self, arch: BaseArchitecture) -> str:
+        return self.__proxy_key + arch.level.level_id
+
+    def __proxy_key_from_message(self, message: BaseMessage) -> str:
+        return self.__proxy_key_from_arch(self.get_arch_from_message(message))
+
+    def update_base_arch_global_variable(self, base_arch: BaseArchitecture, arch_tuple: List[BaseArchitecture]):
+        self.proxy_keys = {}
+        for arch in arch_tuple:
+            self.proxy_keys[str(arch)] = self.__proxy_key_from_arch(arch)
+
+        for proxy_key in list(self.proxy_keys.values()):# + [self.__proxy_key]:
+            new_operation = CommonTree(CommonToken(text=ProtoParserBase.t_msg))
+            # Left side assignment
+            new_operation.addChild(CommonTree(CommonToken(text=proxy_key)))
+            base_arch.machine.variables[proxy_key] = new_operation
 
     def push_defer_guard_proxy_transitions(self, transitions: List[Transition_v2],
                                            cur_guard: Union[BaseMessage, Message],
@@ -55,7 +66,9 @@ class NestedDeferMessage(BaseDeferMessage):
         for transition in transitions:
             if transition.guard == cur_guard:
                 transition.guard = new_guard
-                transition.operations.append(self.push_defer_message(self.proxy_key, str(new_guard)))
+                if isinstance(new_guard, BaseMessage):
+                    proxy_key = self.__proxy_key_from_message(new_guard)
+                    transition.operations.append(self.push_defer_message(proxy_key, str(new_guard)))
 
     def pop_defer_guard_proxy_transitions(self, transitions: List[Transition_v2],
                                           cur_guard: Union[BaseMessage, Message],
@@ -63,5 +76,11 @@ class NestedDeferMessage(BaseDeferMessage):
         for transition in transitions:
             if transition.guard == cur_guard:
                 transition.guard = new_guard
-            transition.rename_operation(str(cur_guard), self.proxy_key)
-
+            proxy_key = self.__proxy_key
+            if isinstance(cur_guard, BaseMessage):
+                proxy_key = self.__proxy_key_from_message(cur_guard)
+            mutated = transition.rename_operation(str(cur_guard), proxy_key)
+            if mutated:
+                undef_proxy_msg_node = CommonTree(CommonToken(text=ProtoParserBase.k_undef))
+                undef_proxy_msg_node.addChild(CommonTree(CommonToken(text=proxy_key)))
+                transition.operations.append(undef_proxy_msg_node)

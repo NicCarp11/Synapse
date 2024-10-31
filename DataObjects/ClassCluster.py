@@ -30,7 +30,7 @@
 #
 #
 
-from typing import Tuple, List, Set
+from typing import Tuple, List, Set, Callable, Self, Any
 from DataObjects.ClassMachine import Machine
 from DataObjects.ClassLevel import Level
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
@@ -73,6 +73,22 @@ class Cluster(SystemTuple):
             if machine.arch == mach_arch:
                 mach_arch_list.append(machine.arch)
         return len(mach_arch_list)
+
+    @staticmethod
+    def get_machine_architectures_in_clusters(clusters: List[Self]) -> Set[FlatArchitecture]:
+        mach_arch_set: Set[FlatArchitecture] = set()
+        for cluster in clusters:
+            for machine in cluster.system_tuple:
+                mach_arch_set.add(machine.arch)
+        return mach_arch_set
+
+    @staticmethod
+    def get_global_architectures_in_clusters(clusters: List[Self]) -> Set[GlobalBaseArchitecture]:
+        global_arch_set: Set[GlobalBaseArchitecture] = set()
+        for cluster in clusters:
+            for machine in cluster.system_tuple:
+                global_arch_set.add(machine.arch.global_arch)
+        return global_arch_set
 
     def get_machine_architectures_by_type(self, mach_type: str) -> Set[FlatArchitecture]:
         mach_arch_set: Set[FlatArchitecture] = set()

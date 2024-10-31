@@ -93,12 +93,11 @@ class GenConst(TemplateHandler, Debug):
     def gen_dyn_const_str(self, clusters: List[Cluster]):
         const_str = "---- SSP declaration constants" + self.nl
 
-        for cluster in clusters:
-            for global_arch in cluster.get_global_architectures():
-                for constant_name in global_arch.constants.const_dict:
-                    const_val = str(global_arch.constants.const_dict[constant_name])
-                    self.perror("Constant definition is not integer", const_val.isdigit())
-                    const_str += self.tab + constant_name + ": " + const_val + self.end
+        for global_arch in Cluster.get_global_architectures_in_clusters(clusters):
+            for constant_name in global_arch.constants.const_dict:
+                const_val = str(global_arch.constants.const_dict[constant_name])
+                self.perror("Constant definition is not integer", const_val.isdigit())
+                const_str += self.tab + constant_name + ": " + const_val + self.end
 
         const_str += self.nl
 

@@ -26,12 +26,11 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from typing import List, Dict, Any
+from typing import List, Dict, Union
 
 from DataObjects.ClassCluster import Cluster
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.States.ClassStatev2 import State_v2
-from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from DataObjects.ClassMultiDict import MultiDict
 from DataObjects.FlowDataTypes.ClassEvent import Event, EventAck
 
@@ -58,14 +57,54 @@ class GenAccessStateMachines(TemplateBase):
         self.config = config
 
         access_fsm_str_list = []
+        arch_set = set()
 
         for cluster in clusters:
             machines = set(cluster.system_tuple)
 
             for arch in sorted(set([machine.arch for machine in machines]), key=lambda x: str(x)):
-                access_fsm_str_list.append(self.gen_state_machine_graph(cluster, arch, config))
+                if arch in arch_set: continue
+                else: arch_set.add(arch)
+                access_fsm_str_list.append(self.gen_state_machine_graph2(cluster, arch, config))
 
         murphi_str.append("----" + __name__.replace('.', '/') + self.nl + "".join(access_fsm_str_list))
+
+    def gen_state_machine_graph2(self, cluster: Cluster, arch: FlatArchitecture, config: BaseConfig) -> str:
+        state_case_str = ""
+        state_transition_dict = MultiDict()
+
+        for start_state in arch.stable_states:
+            for sub_tree in arch.state_sub_tree_dict[start_state]:
+                for transition in arch.get_transitions_from_graph(sub_tree):
+                    if (isinstance(transition.guard, BaseAccess.Access_type)
+                            or isinstance(transition.guard, Event) or isinstance(transition.guard, EventAck)):
+                        state_transition_dict[str(transition.start_state)] = transition
+
+        for state in sorted(state_transition_dict.keys(), key=lambda x: str(x)):
+            state_case_str += self._gen_state_access_statement2(cluster, arch, config, state,
+                                                               state_transition_dict[state])
+
+        return self.add_tabs(state_case_str, 1)
+
+    def _gen_state_access_statement2(self, cluster: Cluster, arch: FlatArchitecture, config: BaseConfig,
+                                    state: State_v2, transition_token_dict):
+        access_str = ""
+        transition_guard_dict = MultiDict()
+
+        for transition in transition_token_dict:
+            transition_guard_dict[str(transition.guard)] = transition
+
+        for guard in sorted(transition_guard_dict.keys(), key=lambda x: str(x)):
+                gen_murphi_tree = GenMurphiRevTree(cluster, arch, config, False)
+                ret_target_list = gen_murphi_tree.gen_murphi_operation_tree(transition_guard_dict[guard])
+                Debug.perror(f"PCC could not be correctly translated to target: {ret_target_list}",
+                             None not in ret_target_list)
+
+                access_func_str = self.add_tabs("".join(ret_target_list), 1)
+                access_str += (self._gen_access_func_header(arch, state, guard, gen_murphi_tree) +
+                               access_func_str +
+                               self._gen_access_func_end()) + self.nl
+        return access_str
 
     def gen_state_machine_graph(self, cluster: Cluster, arch: FlatArchitecture, config: BaseConfig) -> str:
         state_case_str = ""
@@ -103,7 +142,7 @@ class GenAccessStateMachines(TemplateBase):
         return access_str
 
     def _gen_access_func_header(self, arch: FlatArchitecture, start_state: State_v2, guard,
-                                pcc_to_target: GenPCCToTarget) -> str:
+                                pcc_to_target: Union[GenMurphiRevTree, GenPCCToTarget]) -> str:
 
         fct_header = "procedure " + MurphiTokens.k_access_func + str(arch) + "_" + str(start_state) + "_" + \
                      str(guard) + \

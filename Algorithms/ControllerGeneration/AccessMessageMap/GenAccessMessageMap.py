@@ -45,6 +45,8 @@ class GenAccessMessageMap(Debug):
 
     auto_detect_access_appearance_at_memory: bool = True
 
+    hidden_accesses: bool = True
+
     def __init__(self, level: Level):
 
         self.dbg = True
@@ -347,7 +349,8 @@ class GenAccessMessageMap(Debug):
             # TODO do a smarter nesting of transition trees
             #   This makes the top-level protocol effectively MI (correct)
             #   For now, just Disable hidden_accesses (incorrect)
-            access = orig_access
+            if not self.hidden_accesses:
+                access = orig_access
             if access != orig_access:
                 if dir_state not in self.cache_state_logical_access_to_hidden_access:
                     self.cache_state_logical_access_to_hidden_access[cache_state] = {}

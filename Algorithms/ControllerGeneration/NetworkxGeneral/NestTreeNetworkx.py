@@ -43,9 +43,9 @@ from Debug.Monitor.ClassDebug import Debug
 
 class NestTreeNetworkx(NestedDeferMessage, TreeBaseNetworkx):
 
-    def __init__(self, base_arch: BaseArchitecture, gdbg: bool = False):
+    def __init__(self, base_arch: BaseArchitecture, arch_tuple: List[BaseArchitecture], gdbg: bool = False):
         self.gdbg: bool = gdbg
-        NestedDeferMessage.__init__(self, base_arch)
+        NestedDeferMessage.__init__(self, base_arch, arch_tuple)
         TreeBaseNetworkx.__init__(self)
 
     ## Nest two graphs, by deferring the request message and storing it as a variable

@@ -44,12 +44,11 @@ class GenArchEnums(TemplateBase, Debug):
 
         state_enum_str = "------" + __name__.replace('.', '/') + self.nl
 
-        for cluster in clusters:
-            for arch in cluster.get_machine_architectures():
-                # Generate states
-                state_enum_str += self.gen_state_enums(str(arch), arch.get_architecture_states_verified())
-                # Generate events
-                state_enum_str += self.gen_event_enums(str(arch), arch.event_network.event_issue)
+        for arch in Cluster.get_machine_architectures_in_clusters(clusters):
+            # Generate states
+            state_enum_str += self.gen_state_enums(str(arch), arch.get_architecture_states_verified())
+            # Generate events
+            state_enum_str += self.gen_event_enums(str(arch), arch.event_network.event_issue)
 
         murphi_str.append(state_enum_str)
 

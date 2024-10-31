@@ -44,10 +44,9 @@ class GenAccess(BaseAccess, TemplateBase):
         access_str = "------" + __name__.replace('.','/') + self.nl
         access_str += MurphiTokens.k_perm_type + ": enum {" + self.nl
 
-        for cluster in clusters:
-            for global_arch in cluster.get_global_architectures():
-                for msg in global_arch.base_access.access_map:
-                    access_str += self.tab + str(msg) + ", " + self.nl
+        for global_arch in Cluster.get_global_architectures_in_clusters(clusters):
+            for msg in global_arch.base_access.access_map:
+                access_str += self.tab + str(msg) + ", " + self.nl
 
         access_str += self.tab + "none" + self.nl
         access_str += "}" + self.end + self.nl

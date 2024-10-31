@@ -264,6 +264,9 @@ class GenPCCToTarget(GenDataTypes, GenMurphiAccess, Debug):
         elif (str(operation) in [str(arch) for arch in self.cluster.get_machine_architectures()]
               and not str(operation) == str(self.arch)):
             return GenPCCToMurphi.gen_get_remote_machine_id_func(str(operation))
+        elif (str(operation) in [str(arch) for arch in self.arch.global_arch.get_dependent_architectures()]
+              and not str(operation) == str(self.arch)):
+            return GenPCCToMurphi.gen_get_remote_machine_id_func(str(operation))
         else:
             return GenPCCToMurphi.gen_get_machine_id_func()
 

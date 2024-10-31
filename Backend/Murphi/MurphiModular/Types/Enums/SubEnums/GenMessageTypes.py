@@ -42,10 +42,9 @@ class GenMessageTypes(TemplateBase):
         msg_type_str = "------" + __name__.replace('.','/') + self.nl
         msg_type_str += MurphiTokens.k_message_type + ": enum {" + self.nl
 
-        for cluster in clusters:
-            for global_arch in cluster.get_global_architectures():
-                for msg in global_arch.network.base_message_dict:
-                    msg_type_str += self.tab + str(msg) + ", " + self.nl
+        for global_arch in Cluster.get_global_architectures_in_clusters(clusters):
+            for msg in global_arch.network.base_message_dict:
+                msg_type_str += self.tab + str(msg) + ", " + self.nl
 
         msg_type_str = msg_type_str[:msg_type_str.rfind(",")]
 

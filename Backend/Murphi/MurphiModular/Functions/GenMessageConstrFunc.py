@@ -51,8 +51,7 @@ class GenMessageConstrFunc(GenDataTypes, TemplateHandler, Debug):
 
         base_msg_call_str, base_msg_constr_str = self.gen_base_message_constr(config)
 
-        for cluster in clusters:
-            for global_arch in cluster.get_global_architectures():
+        for global_arch in Cluster.get_global_architectures_in_clusters(clusters):
                 for msg_type in global_arch.network.msg_types:
                     custom_msg_call_str, custom_msg_constr_str = \
                         self.gen_custom_message_constr(global_arch.network.msg_types[msg_type], config)

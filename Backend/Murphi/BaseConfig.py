@@ -131,6 +131,7 @@ class BaseConfig(Debug):
 
                 if arch_cnt != mach_cnt:
                     arch.global_arch.constants.const_dict[arch.machine.machine_cnt_const_id] = str(mach_cnt)
+                    # Safe to ignore that one, since the SSP arch count is populated with the value found in .PCC files
                     self.pwarning("Cluster machine count: " + str(mach_cnt) +
                                   " SSP machine definition count: " + str(arch_cnt) +
                                   " mismatch, using cluster count")

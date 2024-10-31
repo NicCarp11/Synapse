@@ -48,19 +48,21 @@ class GenMachines(TemplateHandler, Debug):
 
         self.arch_type_dict: Dict[FlatArchitecture, GenMachineEntry] = {}
 
+        archs: set[FlatArchitecture] = set()
+
         mach_type_str = ""
 
         for cluster in clusters:
             machines = set(cluster.system_tuple)
-            archs = set([machine.arch for machine in machines])
+            archs.update(set([machine.arch for machine in machines]))
 
-            for arch in archs:
-                arch_str = self.gen_machine_entry(arch, config)
-                arch_str += self.gen_machine_event_queue(arch, config)
-                arch_str += self.gen_machine_instance(arch)
-                arch_str += self.gen_machine_objects(arch)
+        for arch in archs:
+            arch_str = self.gen_machine_entry(arch, config)
+            arch_str += self.gen_machine_event_queue(arch, config)
+            arch_str += self.gen_machine_instance(arch)
+            arch_str += self.gen_machine_objects(arch)
 
-                mach_type_str += arch_str
+            mach_type_str += arch_str
 
         mach_type_str = "----" + __name__.replace('.','/') + self.nl + self.add_tabs(mach_type_str, 1) + self.nl
 

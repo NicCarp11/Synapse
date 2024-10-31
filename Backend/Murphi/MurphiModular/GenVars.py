@@ -59,8 +59,7 @@ class GenVars(TemplateHandler):
         network_str = ""
         fifo_str = ""
 
-        for cluster in clusters:
-            for global_arch in cluster.get_global_architectures():
+        for global_arch in Cluster.get_global_architectures_in_clusters(clusters):
                 for ordered_network in global_arch.network.ordered_networks:
                     network_str += self.gen_ordered_network(global_arch.network.ordered_networks[ordered_network])
                     if config.enable_fifo:
@@ -94,10 +93,12 @@ class GenVars(TemplateHandler):
 
     def gen_machine_instances(self, clusters: List[Cluster]) -> str:
         arch_inst_str = ""
+        archs = set()
         for cluster in clusters:
-            archs = set(machine.arch for machine in cluster.system_tuple)
-            for arch in archs:
-                arch_inst_str += (self.tab + MurphiTokens.k_instance + str(arch) + ": " +
+            archs.update(set(machine.arch for machine in cluster.system_tuple))
+
+        for arch in archs:
+            arch_inst_str += (self.tab + MurphiTokens.k_instance + str(arch) + ": " +
                                   MurphiTokens.k_object + str(arch) + self.end)
 
         return arch_inst_str

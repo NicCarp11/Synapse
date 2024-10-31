@@ -133,7 +133,7 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
 
         ArchTupleStateOrdering.__init__(self, tuple(compound_archs))
 
-        NestTreeNetworkx.__init__(self, compound_archs[0])
+        NestTreeNetworkx.__init__(self, compound_archs[0], tuple(compound_archs))
 
         # Tracks the new states
         self.graph_state_to_heterogen_state_map: Dict[Tuple[Tuple[State_v2], str], CompoundState] = {}
@@ -229,6 +229,7 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
             #   _Only correct if L2-CC has its own eviction events
             #     -> Eviction from L2-CC means forcefully evicting in L1 before, by simulating store accesses to L1 dir
             #     -> If compound state denotes not-present in L1, L2-CC can evict immediately
+            #         -> Still, simulate store to proxy-dir; would return immediately bc not-present in L1
             #     -> Overall, Mechanism should be identical to L2-CC receiving L2_Inv or L2_FwdGet{S,M}
             # TODO GetS->FwdGet_S is local, is that right?
             #     GetS with store access - could be because MSI has no hidden access for S, check this with MESIxMESI.
@@ -253,8 +254,115 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
             remote_proxy_graph = self.get_access_proxy_dir_graph(remote_access_dir_graph_dict[remote_proxy_access_tree],
                                                              remote_proxy_dir_states)
 
-            # Nest the remote operation tree in
+            if len(self.get_terminal_nodes_by_attribute(remote_proxy_graph))>1:
+                terminal_nodes: [State_v2] = []
+                #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(remote_proxy_graph)))
+                for terminal_node in self.get_terminal_nodes_by_attribute(remote_proxy_graph):
+                    if not terminal_node.stable:
+
+                        stable_start = terminal_node.start_state_set[0].stable_state
+
+                        outself = self.get_access_proxy_dir_graph(remote_access_dir_graph_dict[remote_proxy_access_tree], [stable_start])
+                        outself = self.copy_graph(outself)
+                        # Only keep path from transient terminal node to actual terminal node
+                        #traces = self.get_trans_traces(outself, terminal_node, self.get_terminal_nodes_by_attribute(remote_proxy_graph))
+                        #for trace in traces:
+                        #    self.add_transition_to_graph(remote_proxy_graph, trace)
+                        #MergeGraphsNetworkx().merge_identical_start_state_graphs(traces)
+                        outself.remove_edge(stable_start, terminal_node)
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(outself)))
+                        # Merge the extra transitions into original remote access graph
+                        for transition in self.get_transitions_from_graph(outself):
+                            self.add_transition_to_graph(remote_proxy_graph, transition)
+
+                    else:
+                        terminal_nodes.append(terminal_node)
+
+                self.clear_terminal_nodes_attribute(remote_proxy_graph)
+                self.set_terminal_nodes_attribute(remote_proxy_graph, terminal_nodes)
+                #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(remote_proxy_graph)))
+                #print("toto")
+
+            ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(remote_proxy_graph)))
             nest_graph = self.nest_graphs(remote_proxy_graph, remote_proxy_access_tree)
+
+            sub_nesting: Dict = {}
+            for remote_proxy_dir_state in remote_proxy_dir_states:
+                transition_list: List[Transition_v2] = self.get_transitions_from_graph(remote_proxy_graph)
+                for transition in transition_list:
+                    remote_proxy_dir_arch: CompoundDirCacheArchitecture = self.get_arch_by_state(remote_proxy_dir_state)
+                    transition_guard = transition.guard
+                    if (remote_proxy_dir_state in remote_proxy_dir_arch.cache_state_fwd_message_access_map
+                            and transition_guard in remote_proxy_dir_arch.dir_state_req_base_message_access_map[remote_proxy_dir_state]):
+                        start_state = self.get_transitions_from_graph(remote_proxy_access_tree)[0].start_state
+                        store_access_tree = self.get_access_proxy_dir_graph(remote_proxy_dir_arch.dir_state_req_base_message_access_map[remote_proxy_dir_state][transition_guard], [start_state])
+
+                        #print("toto")
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(store_access_tree)))
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(remote_proxy_access_tree)))
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(remote_proxy_graph)))
+                        #for terminal_node in self.get_terminal_nodes_by_attribute(remote_proxy_graph):
+                        #    print(terminal_node)
+
+                        sub_graph = MultiDiGraph()
+                        #sub_graph.add_edge(transition_list[0].start_state, transition_list[0].final_state, transition=transition_list[0])
+                        sub_graph.add_edge(transition.start_state, transition.final_state, transition=transition)
+                        self.clear_root_node_attribute(sub_graph)
+                        self.clear_terminal_nodes_attribute(sub_graph)
+                        #self.set_root_node_attribute(sub_graph, transition_list[0].start_state)
+                        self.set_root_node_attribute(sub_graph, transition.start_state)
+                        self.set_terminal_nodes_attribute(sub_graph, transition.final_state)
+
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(sub_graph)))
+
+                        # Can't merge with multiple start guard
+                        #sub_graph2 = self.copy_graph(remote_proxy_access_tree)
+                        #sub_graph3 = MergeGraphsNetworkx().merge_identical_start_state_graphs([store_access_tree, remote_proxy_access_tree])
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(sub_graph3)))
+
+                        sub_nesting[transition_guard] = self.nest_graphs(store_access_tree, sub_graph)
+
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(nest_graph)))
+                        #for terminal_node in self.get_terminal_nodes_by_attribute(nest_graph):
+                        #    print(terminal_node)
+                        #print("toto")
+
+
+
+            for guard in sub_nesting.keys():
+                graph: MultiDiGraph = sub_nesting[guard]
+                ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(nest_graph)))
+                for transition in self.get_transitions_from_graph(nest_graph):
+                    if transition.guard == guard:
+                        start_state = transition.start_state
+                        final_state = transition.final_state
+
+                        trans = self.get_transitions_from_graph(graph)
+                        #ProtoCCTablePrinter().ptransitiontable(trans)
+                        terminal_nodes: List[CompoundState] = self.get_terminal_nodes_by_attribute(graph)
+                        root_node = self.get_root_node_by_attribute(graph)
+                        for trans2 in trans:
+                            if trans2.start_state == root_node:
+                                trans2.start_state = start_state
+                            if trans2.final_state in terminal_nodes:
+                                trans2.final_state = final_state
+                        #ProtoCCTablePrinter().ptransitiontable(trans)
+
+                        nest_graph.remove_edge(start_state, final_state)
+                        self.add_transition_to_graph(nest_graph, trans)
+                        #self.clear_root_node_attribute(graph)
+                        #self.clear_terminal_nodes_attribute(graph)
+                        #self.set_root_node_attribute(graph, start_state)
+                        #self.set_terminal_nodes_attribute(graph, final_state)
+                        #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(nest_graph)))
+                        #print("toto")
+
+
+
+
+
+            # Nest the remote operation tree in
+            #nest_graph = self.nest_graphs(remote_proxy_graph, remote_proxy_access_tree)
 
             # Remove the proxy processor component that is naturally included in certain protocols if not required
             # for correctness, this is when the issuing cluster cache has a proxy processor that monitors that the
@@ -263,6 +371,8 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
             # different addresses
             if not remote_proxy_processor:
                 nest_graph = self.prune_event_execution(nest_graph)
+
+            self.prune_evict_proxy_msg_assign(nest_graph)
 
             # Update the transition states by new compound states whose base states are sorted according to the
             # architecture tuple
@@ -351,6 +461,14 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
             self.graph_state_to_heterogen_state_map[state_id_tuple] = CompoundState(sorted_state_tuple,
                                                                                     compound_state.prefix)
         return self.graph_state_to_heterogen_state_map[state_id_tuple]
+
+    def prune_evict_proxy_msg_assign(self, remote_proxy_graph: MultiDiGraph):
+        for transition in self.get_transitions_from_graph(remote_proxy_graph):
+            for operation in transition.operations:
+                if str(operation) in ProtoParserBase.k_assign:
+                    tokens = operation.getChildren()
+                    if len(tokens) == 3 and [str(token) for token in tokens] == ["proxy_msg","=","evict"]:
+                        transition.operations.remove(operation)
 
     def prune_event_execution(self, remote_proxy_graph: MultiDiGraph):
         root_node = self.get_root_node_by_attribute(remote_proxy_graph)
@@ -457,3 +575,8 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
         for compound_arch in self.arch_tuple:
             arch_list += compound_arch.get_arch_list()
         return [self] + arch_list
+
+    def get_arch_from_message(self, msg: BaseMessage) -> FlatArchitecture:
+        for arch in self.arch_tuple:
+            if str(msg) in arch.global_arch.network.base_message_dict:
+                return arch

@@ -52,16 +52,18 @@ class GenAccessRuleSet(TemplateHandler, Debug):
 
         # If litmus testing is activated then access rules must not to be generated
         ruleset_str_list = []
+        arch_set = set()
 
         for cluster in clusters:
             machines = set(cluster.system_tuple)
+            arch_set.update(set([machine.arch for machine in machines]))
 
-            for arch in set([machine.arch for machine in machines]):
-                ruleset_str = self.gen_access_rules_str(arch, config)
-                if not ruleset_str:
-                    continue
-                ruleset_str = self.rule_set_body(arch, ruleset_str) + self.nl
-                ruleset_str_list.append(ruleset_str)
+        for arch in arch_set:
+            ruleset_str = self.gen_access_rules_str(arch, config)
+            if not ruleset_str:
+                continue
+            ruleset_str = self.rule_set_body(arch, ruleset_str) + self.nl
+            ruleset_str_list.append(ruleset_str)
 
         murphi_str.append("----" + __name__.replace('.','/') + self.nl + self.add_tabs("".join(ruleset_str_list), 1))
 

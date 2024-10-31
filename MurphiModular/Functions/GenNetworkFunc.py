@@ -220,6 +220,13 @@ class GenNetworkFunc(TemplateHandler, Debug):
         # Substituted request network for network. All networks must be ready to serve a response to an issued request
         for network in networks:
             if str(network) in network_names:
+                # TODO Currently, generates a warning because L1 and L2 networks use same channel names
+                #      IMO, we could add level_id as suffixes to the network/channel names to make them unique
+                #      Then, also generate level-specific:
+                #          _ send/receive functions
+                #          _ Message types
+                #      Overall, would help to catch potential issues in the backend,
+                #      or abstract representation of the protocols
                 Debug.pwarning("Multiple networks have same name and identifiers. This could potentially lead to "
                                "deadlocks if this was not desired when designing the system")
                 continue

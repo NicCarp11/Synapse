@@ -254,6 +254,9 @@ class GenPCCtoMurphi_Rev(GenDataTypes, GenMurphiAccess, Debug):
         elif (str(operation) in [str(arch) for arch in self.cluster.get_machine_architectures()]
               and not str(operation) == str(self.arch)):
             return str(operation)
+        elif (str(operation) in [str(arch) for arch in self.arch.global_arch.get_dependent_architectures()]
+              and not str(operation) == str(self.arch)):
+            return str(operation)
         else:
             return MurphiTokens.v_mach
 
@@ -278,6 +281,11 @@ class GenPCCtoMurphi_Rev(GenDataTypes, GenMurphiAccess, Debug):
                         break
 
             if not var_type:
+                # TODO Warning raised for .cl field access in RequestL1/RequestL2 msg types (PutS msg essentially)
+                #      Harmful, because it re-initializes cbe.cl on a PutS message
+                #      The issue exists in HeteroGen as well, most likely a ProtoGen bug
+                #      Fix can be done later, as a correct cache controller never sends PutS message when in M state.
+                #          This generates dead code essentially.
                 self.pwarning("The variable: " + obj_var + " is not defined for the message type " +
                               str(msg_defs[0].msg_type))
                 if obj_var in self.config.super_type_defs:

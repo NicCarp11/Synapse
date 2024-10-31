@@ -58,14 +58,16 @@ class GenMessageStateMachines(TemplateBase, Debug):
         self.config = config
 
         fsm_msg_str_list = []
+        arch_set = set()
 
         for cluster in clusters:
             machines = set(cluster.system_tuple)
+            arch_set.update(set([machine.arch for machine in machines]))
 
-            for arch in set([machine.arch for machine in machines]):
-                self.arch_local_var_dict[arch] = GenMurphiRevTree(cluster, arch, config, True)
-                func_str = (self.gen_state_machine_graph(arch))
-                fsm_msg_str_list.append(self._gen_mach_func_header(arch) + func_str + self._gen_mach_func_end()
+        for arch in arch_set:
+            self.arch_local_var_dict[arch] = GenMurphiRevTree(cluster, arch, config, True)
+            func_str = (self.gen_state_machine_graph(arch))
+            fsm_msg_str_list.append(self._gen_mach_func_header(arch) + func_str + self._gen_mach_func_end()
                                         + self.nl)
 
         murphi_str.append("----" + __name__.replace('.','/') + self.nl + self.add_tabs("".join(fsm_msg_str_list), 1))
