@@ -74,6 +74,8 @@ class CompoundStateGenNetworkx(TreeBaseNetworkx):
                 terminal_prefix = ""
                 if transition.final_state not in terminal_nodes:
                     terminal_prefix = self.prefix
+                elif not transition.final_state.stable:
+                    terminal_prefix = self.prefix
                 new_trans.update_state(new_trans.final_state,
                                        self.gen_compound_state(new_trans.final_state, chain_states, terminal_prefix))
 
