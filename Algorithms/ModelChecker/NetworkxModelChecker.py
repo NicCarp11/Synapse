@@ -292,7 +292,7 @@ class NetworkxModelChecker(Debug):
 
     def run_checker(self, arch_set: Set[FlatArchitecture]) -> SystemStateSpaceChecker:
         covered_traces = 0
-        mach_count = 0
+        mach_count = 3
         prev_trace_coverage_dict: Dict[int, SystemStateSpaceChecker] = {}
         while True:
             trace_coverage_dict: Dict[int, SystemStateSpaceChecker] = {}

@@ -153,6 +153,7 @@ class ProxyDirTransition(Transition_v2):
     def get_start_final_state(proxy_dir_trans_cluster: List[Transition_v2],
                               mach_trace: Trace):
         trans_list = [trans for trans in proxy_dir_trans_cluster if trans in mach_trace.trace_trans]
+        #trans_list = proxy_dir_trans_cluster
         if trans_list:
             start_state = trans_list[0].start_state
             final_state = trans_list[-1].final_state

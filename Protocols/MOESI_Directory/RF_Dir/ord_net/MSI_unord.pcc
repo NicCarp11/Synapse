@@ -1,8 +1,13 @@
 # NrCaches 3
 
-Network { Unordered fwd;   //FwdGetS, FwdGetM, Inv, PutAck
-          Unordered resp;  // Data, InvAck
-          Unordered req;   //GetS, GetM, PutM
+// If there exist FIFO input buffers, the fwd requests and inv must be in different VCs to avoid deadlocks if an Inv overtakes a preceding Fwd_GetS 
+
+Network {
+          Ordered  fwd;   //FwdGetS, FwdGetM
+          //Ordered inv;   // Inv
+          //Unordered put_vc;   // PutAck
+          Ordered  resp;  // Data, InvAck
+          Ordered  req;   //GetS, GetM, PutM
           };
 
 Cache {
@@ -89,6 +94,21 @@ Architecture cache {
         }
     }
 
+    Process(I, evict, State){
+        msg = Request(PutI, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutI_Ack:
+                State = I;
+                break;
+        }
+    }
+
+//    Process(I, PutI_Ack, State){
+//       State = I;
+//    }
+
     // S ////////////////////////////////////////////////////////
     Process(S, load, S){
         load;
@@ -135,7 +155,7 @@ Architecture cache {
         req.send(msg);
 
         await{
-            when Put_Ack:
+            when PutS_Ack:
                 State = I;
                 break;
         }
@@ -173,7 +193,7 @@ Architecture cache {
         req.send(msg);
 
         await{
-            when Put_Ack:
+            when PutM_Ack:
                 State = I;
                 break;
         }
@@ -198,38 +218,20 @@ Architecture directory {
         owner = GetM.src;
     }
 
-    // S ////////////////////////////////////////////////////////
-    Process(S, GetS){
-       cache.add(GetS.src);
-       msg = Resp(GetS_Ack, ID, GetS.src, cl);
+//    Process(I, PutI){
+//       msg = Ack(PutI_Ack, ID, PutI.src);
+//       resp.send(msg);
+//       cache.del(PutI.src);
+//
+//       if cache.count() == 0{
+//            State=I;
+//            break;
+//       }
+//    }
+
+    Process(I, PutS){
+       msg = Ack(PutI_Ack, ID, PutS.src);
        resp.send(msg);
-    }
-
-    Process(S, GetM, State){
-       if cache.contains(GetM.src){
-           cache.del(GetM.src);
-       }
-       if cache.count() == 0{
-            msg = Resp(GetM_Ack_D, ID, GetM.src, cl);
-            resp.send(msg);
-            owner = GetM.src;
-            cache.clear();
-            State=M;
-       } else{
-           msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
-           resp.send(msg);
-           msg = Ack(Inv, GetM.src, GetM.src);
-           fwd.mcast(msg, cache);
-           owner = GetM.src;
-           cache.clear();
-           State=M;
-       }
-
-    }
-
-    Process(S, PutS){
-       msg = Ack(Put_Ack, ID, PutS.src);
-       fwd.send(msg);
        cache.del(PutS.src);
 
        if cache.count() == 0{
@@ -238,6 +240,95 @@ Architecture directory {
        }
     }
 
+    Process(I, PutM){
+       msg = Ack(PutI_Ack, ID, PutM.src);
+       resp.send(msg);
+       cache.del(PutM.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, GetS){
+       cache.add(GetS.src);
+       msg = Resp(GetS_Ack, ID, GetS.src, cl);
+       resp.send(msg);
+    }
+
+    Process(S, GetM){
+       if cache.contains(GetM.src){
+           cache.del(GetM.src);
+           if cache.count() == 0{
+                msg = Resp(GetM_Ack_D, ID, GetM.src, cl);
+                resp.send(msg);
+                State=M;
+           } else{
+               msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+               resp.send(msg);
+               msg = Ack(Inv, GetM.src, GetM.src);
+               //inv.mcast(msg, cache);
+               fwd.mcast(msg, cache);
+               State=M;
+           }
+           owner = GetM.src;
+           cache.clear();
+       } else {
+           msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+           resp.send(msg);
+           State=M;
+           msg = Ack(Inv, GetM.src, GetM.src);
+           //inv.mcast(msg, cache);
+           fwd.mcast(msg, cache);
+           owner = GetM.src;
+           cache.clear();
+       }
+    }
+
+    Process(S, PutS){
+       if cache.contains(PutS.src){
+            msg = Ack(PutS_Ack, ID, PutS.src);
+            resp.send(msg);
+            cache.del(PutS.src);        
+       } else {
+            msg = Ack(PutI_Ack, ID, PutS.src);
+            resp.send(msg);        
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(S, PutM){
+       if cache.contains(PutM.src){
+            msg = Ack(PutS_Ack, ID, PutM.src);
+            resp.send(msg);
+            cache.del(PutM.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutI.src);
+            resp.send(msg);        
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+//    Process(S, PutI){
+//       msg = Ack(PutI_Ack, ID, PutI.src);
+//       resp.send(msg);
+//       cache.del(PutI.src);
+//
+//       if cache.count() == 0{
+//            State=I;
+//            break;
+//       }
+//    }
 
     // M ////////////////////////////////////////////////////////
     Process(M, GetS){
@@ -263,13 +354,16 @@ Architecture directory {
        owner = GetM.src;
     }
 
-    Process(M, PutM){
-       msg = Ack(Put_Ack, ID, PutM.src);
-       fwd.send(msg);
-
+    Process(M, PutM, State){
        if owner == PutM.src{
+            msg = Ack(PutM_Ack, ID, PutM.src);
+            resp.send(msg);
             cl = PutM.cl;
             State=I;
+       }
+       else{
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
        }
     }
 

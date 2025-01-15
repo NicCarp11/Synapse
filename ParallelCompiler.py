@@ -248,7 +248,7 @@ class MurphiWorkerThread(threading.Thread):
 def_path = os.getcwd()
 
 # PATH TO THE MURPHI VARIABLE
-murphi_compiler_path = '/home/tux/Desktop/murphi'
+murphi_compiler_path = def_path + '/CMurphi'
 litmus_test_files_path = def_path + '/Protocols/MOESI_Directory/RF_Dir/ord_net/HeteroGen'
 
 # Find all litmus test murphi code files

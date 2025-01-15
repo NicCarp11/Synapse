@@ -64,7 +64,8 @@ class StateSet:
             self.states.append(state)
         if state not in self.start_states:
             self.start_states.append(state)
-            state.start_state_set.append(self)
+            if self not in state.start_state_set:
+                state.start_state_set.append(self)
 
     def add_end_state(self, state: State_v2):
         # Stable states aren't added to state sets
@@ -75,7 +76,8 @@ class StateSet:
             self.states.append(state)
         if state not in self.end_states:
             self.end_states.append(state)
-            state.end_state_set.append(self)
+            if self not in state.end_state_set:
+                state.end_state_set.append(self)
 
     def remove_state(self, state):
         state.remove_state_set(self)

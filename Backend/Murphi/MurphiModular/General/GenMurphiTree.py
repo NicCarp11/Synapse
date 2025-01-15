@@ -31,6 +31,7 @@ from typing import List, Any
 from antlr3 import CommonToken
 from antlr3.tree import CommonTree
 
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
 from Parser.NetworkxParser.ClassProtoParserBase import ProtoParserBase
 from Parser.CopyReducedCommonTree import copy_tree
 
@@ -227,8 +228,8 @@ class GenMurphiRevTree(GenPCCtoMurphi_Rev):
                         variable = str(cond_op)
                         if variable in self.arch.machine.variables_init_val:
                             new_operation_list.append(self.init_val_node_for_var(variable))
-                        else:
-                            new_operation_list.append(self.undef_node_for_var(variable))
+                        #elif isinstance(self.arch, HHDirArchitecture) and variable not in self.arch.proxy_keys.values():
+                            #new_operation_list.append(self.undef_node_for_var(variable))
         return new_operation_list
 
     def init_val_node_for_var(self, variable: str) -> CommonTree:

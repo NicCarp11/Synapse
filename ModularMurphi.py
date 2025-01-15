@@ -52,7 +52,7 @@ from Debug.Monitor.ClassDebug import Debug
 
 class ModularMurphi(TemplateHandler, Debug):
 
-    murphi_path = '/home/tux/Desktop/murphi'
+    murphi_path = '/home/anatole/Documents/Travail/Postdoc/cxl-repos/HieraHeteroGen/CMurphi'
 
     def __init__(self, clusters: List[Cluster],
                  file_name: str,

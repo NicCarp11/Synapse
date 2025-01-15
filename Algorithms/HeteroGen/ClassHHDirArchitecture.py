@@ -95,11 +95,11 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
         #CompoundDirCacheArchitecture(lower_level, map_dict_list)
         #CompoundDirCacheArchitecture(lower_level)
 
-        #Debug.psection(f"Lower level dircache controller for {lower_level.parser.filename}")
-        #ProtoCCTablePrinter().ptransitiontable(list(lower_level.cache.get_architecture_transitions()))
+        Debug.psection(f"Lower level cache controller for {lower_level.parser.filename}")
+        ProtoCCTablePrinter().ptransitiontable(list(lower_level.cache.get_architecture_transitions()))
 
-        #Debug.psection(f"Lower level dircache controller for {lower_level.parser.filename}")
-        #ProtoCCTablePrinter().ptransitiontable(list(lower_level.directory.get_architecture_transitions()))
+        Debug.psection(f"Lower level dir controller for {lower_level.parser.filename}")
+        ProtoCCTablePrinter().ptransitiontable(list(lower_level.directory.get_architecture_transitions()))
 
         #Debug.psection(f"Higher level initial directory controller {higher_level.parser.filename}")
         #ProtoCCTablePrinter().ptransitiontable(list(higher_level.directory.get_architecture_transitions()))
@@ -109,10 +109,10 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
         # Run ProtoGen for the lower and the higher level
         ProtoNetworkxBase(higher_level)
 
-        #Debug.psection(f"Higher level ProtoGen directory controller {higher_level.parser.filename}")
-        #ProtoCCTablePrinter().ptransitiontable(list(higher_level.directory.get_architecture_transitions()))
-        #Debug.psection(f"Higher level ProtoGen cache controller {higher_level.parser.filename}")
-        #ProtoCCTablePrinter().ptransitiontable(list(higher_level.cache.get_architecture_transitions()))
+        Debug.psection(f"Higher level ProtoGen cache controller {higher_level.parser.filename}")
+        ProtoCCTablePrinter().ptransitiontable(list(higher_level.cache.get_architecture_transitions()))
+        Debug.psection(f"Higher level ProtoGen directory controller {higher_level.parser.filename}")
+        ProtoCCTablePrinter().ptransitiontable(list(higher_level.directory.get_architecture_transitions()))
 
         # HeteroGen algorithm
 
@@ -253,8 +253,13 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
             # the directory can respond to its local requestor.
             remote_proxy_graph = self.get_access_proxy_dir_graph(remote_access_dir_graph_dict[remote_proxy_access_tree],
                                                              remote_proxy_dir_states)
-
-            if len(self.get_terminal_nodes_by_attribute(remote_proxy_graph))>1:
+            a = list(self.get_transitions_from_graph(remote_proxy_graph))
+            ProtoCCTablePrinter().ptransitiontable(a)
+            finals = []
+            for trans in a:
+                finals.append((trans.final_state))
+            b = self.get_terminal_nodes_by_attribute(remote_proxy_graph)
+            if len(self.get_terminal_nodes_by_attribute(remote_proxy_graph))>0:
                 terminal_nodes: [State_v2] = []
                 #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(remote_proxy_graph)))
                 for terminal_node in self.get_terminal_nodes_by_attribute(remote_proxy_graph):
@@ -296,6 +301,8 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
                             and transition_guard in remote_proxy_dir_arch.dir_state_req_base_message_access_map[remote_proxy_dir_state]):
                         start_state = self.get_transitions_from_graph(remote_proxy_access_tree)[0].start_state
                         store_access_tree = self.get_access_proxy_dir_graph(remote_proxy_dir_arch.dir_state_req_base_message_access_map[remote_proxy_dir_state][transition_guard], [start_state])
+                        if not store_access_tree:
+                            continue
 
                         #print("toto")
                         #ProtoCCTablePrinter().ptransitiontable(list(self.get_transitions_from_graph(store_access_tree)))
@@ -398,8 +405,17 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
 
             for required_access in translation_table_dict[str(access)]:
                 access_trees: List[MultiDiGraph] = []
-                for msg_tree in remote_proxy_dir_arch.state_sub_tree_dict[remote_proxy_dir_state]:
-                    tree_guard = self.get_transitions_by_start_state(msg_tree, remote_proxy_dir_state)[0].guard
+
+                stable_start = remote_proxy_dir_state
+                if not remote_proxy_dir_state.stable:
+                    stable_start = remote_proxy_dir_state.end_state_set[0].stable_state
+
+                for msg_tree in remote_proxy_dir_arch.state_sub_tree_dict[stable_start]:
+                    tree = self.get_transitions_by_start_state(msg_tree, remote_proxy_dir_state)
+                    if not tree:
+                        continue
+
+                    tree_guard = tree[0].guard
 
                     if not isinstance(tree_guard, BaseAccess.Access):
                         continue

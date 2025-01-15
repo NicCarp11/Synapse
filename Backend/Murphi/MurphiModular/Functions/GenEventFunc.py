@@ -53,18 +53,21 @@ class GenEventFunc(TemplateHandler, Debug):
 
         event_func_str = []
         event_archs: Set[FlatArchitecture] = set()
+        arch_set = set()
 
         for cluster in clusters:
             machines = set(cluster.system_tuple)
-
             for arch in set([machine.arch for machine in machines]):
-                for transition in arch.get_architecture_transitions():
-                    if isinstance(transition.guard, Event) or isinstance(transition.guard, EventAck):
-                        event_func_str.append(self.gen_evt_func(arch, config) + self.nl)
-                        if config.atomic_events:
-                            event_func_str.append(self.gen_evt_atomic_func(arch) + self.nl)
-                        event_archs.add(arch)
-                        break
+                arch_set.add(arch)
+
+        for arch in arch_set:
+            for transition in arch.get_architecture_transitions():
+                if isinstance(transition.guard, Event) or isinstance(transition.guard, EventAck):
+                    event_func_str.append(self.gen_evt_func(arch, config) + self.nl)
+                    if config.atomic_events:
+                        event_func_str.append(self.gen_evt_atomic_func(arch) + self.nl)
+                    event_archs.add(arch)
+                    break
 
         if event_archs:
             event_func_str.append(self.gen_evt_reset_func(event_archs))

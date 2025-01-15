@@ -50,7 +50,8 @@ class StateSetsNetworkx:
         # StateSet init
         for stable_state in trans_trace_dict:
             self.state_sets[stable_state] = StateSet(stable_state)
-            stable_state.end_state_set.append(self.state_sets[stable_state])
+            if self.state_sets[stable_state] not in stable_state.end_state_set:
+                stable_state.end_state_set.append(self.state_sets[stable_state])
 
         # Assign the transient states to traces
         for stable_state in trans_trace_dict:

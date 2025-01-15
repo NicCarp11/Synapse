@@ -44,7 +44,6 @@ from Debug.Monitor.ClassDebug import Debug
 class GenAccessMessageMap(Debug):
 
     auto_detect_access_appearance_at_memory: bool = True
-
     hidden_accesses: bool = True
 
     def __init__(self, level: Level):
@@ -450,6 +449,8 @@ class GenAccessMessageMap(Debug):
         for stable_state in self.level.cache.stable_states:
             for evict_transition in stable_state.evict_miss:
                 evict_guard: Evict = evict_transition.guard
+                if stable_state not in self.cache_state_fwd_message_access_map:
+                    self.cache_state_fwd_message_access_map[stable_state] = {}
                 self.cache_state_fwd_message_access_map[stable_state][evict_guard] = store_access
 
     def Print_Dict(self, header, map_dict):
