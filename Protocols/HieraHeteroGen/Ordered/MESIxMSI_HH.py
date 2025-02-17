@@ -53,8 +53,8 @@ class MESIxMSI_HH(RunHH, Debug):
 
     def run_protocol_tests(self):
         path = OrderedReplyForwardingProtocols().get_cur_protocol_path()
-        protocol_1_name: str = "MSI_unord.pcc"
-        protocol_2_name: str = "MSI_unord.pcc"
+        protocol_1_name: str = "MESI.pcc"
+        protocol_2_name: str = "MESI.pcc"
         self.run_test(protocol_1_name, protocol_2_name, path,
                       [self.translation_table_first, self.translation_table_second],
                       self.sc_litmus_test_gen.litmus_test_list, self.rc_litmus_test_gen.litmus_test_list)
