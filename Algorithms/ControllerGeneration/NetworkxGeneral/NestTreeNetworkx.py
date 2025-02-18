@@ -78,6 +78,8 @@ class NestTreeNetworkx(NestedDeferMessage, TreeBaseNetworkx):
         root_transitions = self.get_transitions_by_start_state(graph, root_node)
 
         proxy_guard = list(set([trans.guard for trans in root_transitions]))
+        if len(proxy_guard) >1:
+            print("toto")
         Debug.perror("More than one type of transition guard found in root state. Unable to Nest Graphs",
                      len(proxy_guard) == 1)
         return proxy_guard[0]

@@ -71,6 +71,19 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
             new_transitions = self.gen_new_directory_req_transitions()
             # Cheap trick, but works
             self.dir_state_req_base_message_access_map = self.cache_state_fwd_message_access_map
+            # TODO: FIX THIS: dirty manual logic because write detection from protocol tuples is broken with `CXL.pcc`
+            store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
+            for state in self.dir_state_req_base_message_access_map:
+                to_remove = []
+                for msg in self.dir_state_req_base_message_access_map[state]:
+                    # With `MESI.pcc` in L1, Cmp* message are mis-detected as forwarded requests.
+                    if isinstance(msg, BaseMessage) and msg.id.startswith("Cmp"):
+                        to_remove.append(msg)
+                    # Fix all forwarded requests that are improperly mapped to load access
+                    if isinstance(msg, BaseMessage) and msg.id != "BISnpDataL2":
+                        self.dir_state_req_base_message_access_map[state][msg] = store_access
+                for msg in to_remove:
+                    self.dir_state_req_base_message_access_map[state].pop(msg)
             # Union gives same result
             #self.dir_state_req_base_message_access_map.update(self.cache_state_fwd_message_access_map)
             # TODO ChangeThis: cleaner solution is to keep all mappings for dir/cache req to access

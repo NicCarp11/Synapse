@@ -345,6 +345,13 @@ class GenAccessMessageMap(Debug):
         
             # The actual access is a hidden access type
             orig_access = cache_dir_tuple[0].init_guard
+
+            if not isinstance(access, BaseAccess.Access):
+                continue
+
+            if not isinstance(orig_access, BaseAccess.Access):
+                continue
+
             # TODO do a smarter nesting of transition trees
             #   This makes the top-level protocol effectively MI (correct)
             #   For now, just Disable hidden_accesses (incorrect)
@@ -385,7 +392,7 @@ class GenAccessMessageMap(Debug):
                         if raccess != access:
                             relabel = True
                             # Generate new base message
-                            base_message = self.gen_new_base_message(cache_dir_tuple[1], access)
+                            # base_message = self.gen_new_base_message(cache_dir_tuple[1], access)
                             break
  
                 if relabel:
@@ -427,7 +434,7 @@ class GenAccessMessageMap(Debug):
                             if rreq != new_req_msg:
                                 relabel = True
                                 # Generate new base message
-                                new_fwd_msg = self.gen_new_base_message(msg_match, access)
+                                # new_fwd_msg = self.gen_new_base_message(msg_match, access)
                                 break
                     if relabel:
                         break

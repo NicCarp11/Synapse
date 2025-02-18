@@ -145,11 +145,11 @@
 
 Network { 
           Ordered ndr;      // D2H Non-Data-Response (eq. resp PutX_Ack)
-          Unordered drs;      // D2H Data-Response (eq. resp GetX_Ack)
-          Unordered bisnp;    // D2H Backward-Invalidate-Snoop (eq. fwd Fwd_GetX, Inv)
-          Unordered birsp;    // H2D Backward-Invalidate-Response (eq. rsp Inv_Ack, WB)
-          Unordered rwd;      // H2D Request-with-Data (eq. req PutX)
-          Unordered req;      // H2D Request-without-Data (eq. req GetX)
+          Ordered drs;      // D2H Data-Response (eq. resp GetX_Ack)
+          Ordered bisnp;    // D2H Backward-Invalidate-Snoop (eq. fwd Fwd_GetX, Inv)
+          Ordered birsp;    // H2D Backward-Invalidate-Response (eq. rsp Inv_Ack, WB)
+          Ordered rwd;      // H2D Request-with-Data (eq. req PutX)
+          Ordered req;      // H2D Request-without-Data (eq. req GetX)
 };
 
 Cache {
@@ -164,6 +164,7 @@ Directory {
     Data cl;
     set[NrCaches] ID cache;
     ID owner;
+    ID requestor;
 } directory;
 
 Message Req{};
@@ -205,24 +206,150 @@ Architecture cache {
                     load;
                     break;
             }
+
+          when BISnpData:
+              msg = Req(BIConflict, ID, BISnpData.src);
+              rwd.send(msg);
+
+              await{
+                  when Cmp_S:
+                      State = S;
+                      await{
+                          when MemData:
+                              cl=MemData.cl;
+                              load;
+
+                              await{
+                                  when BIConflictAck:
+                                      // State is clean, just reply
+                                      msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+                                      birsp.send(msg);
+                                      break;
+                              }
+                      }
+                  when Cmp_E:
+                      State = E;
+                      await{
+                          when MemData:
+                              cl=MemData.cl;
+                              load;
+
+                              await{
+                                  when BIConflictAck:
+                                      // State is clean, just reply
+                                      msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+                                      birsp.send(msg);
+                                      State = S;
+                                      break;
+                              }
+                      }
+
+                  when BIConflictAck:
+                      // State is clean, no need to run evict message first, can respond directly
+                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                      birsp.send(msg);
+                      State = I;
+
+                      await{
+                          when Cmp_S:
+                              State = S;
+                              await{
+                                  when MemData:
+                                      cl=MemData.cl;
+                                      load;
+                                      break;
+                              }
+                          when Cmp_E:
+                              State = E;
+                              await{
+                                  when MemData:
+                                      cl=MemData.cl;
+                                      load;
+                                      break;
+                              }
+                      }
+              }
+
+          when BISnpInv:
+              msg = Req(BIConflict, ID, BISnpInv.src);
+              rwd.send(msg);
+
+              await{
+                  when Cmp_S:
+                      State = S;
+                      await{
+                          when MemData:
+                              cl=MemData.cl;
+                              load;
+
+                              await{
+                                  when BIConflictAck:
+                                      // State is clean, just reply
+                                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                                      birsp.send(msg);
+                                      State = I;
+                                      break;
+                              }
+                      }
+                  when Cmp_E:
+                      State = E;
+                      await{
+                          when MemData:
+                              cl=MemData.cl;
+                              load;
+
+                              await{
+                                  when BIConflictAck:
+                                      // State is clean, just reply
+                                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                                      birsp.send(msg);
+                                      State = I;
+                                      break;
+                              }
+                      }
+                  when BIConflictAck:
+                      // State is clean, no need to run evict message first, can respond directly
+                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                      birsp.send(msg);
+                      State = I;
+
+                      await{
+                          when Cmp_S:
+                              State = S;
+                              await{
+                                  when MemData:
+                                      cl=MemData.cl;
+                                      load;
+                                      break;
+                              }
+                          when Cmp_E:
+                              State = E;
+                              await{
+                                  when MemData:
+                                      cl=MemData.cl;
+                                      load;
+                                      break;
+                              }
+                      }
+              }
         }
     }
 
-    Process(I, load, State){
-        msg = Req(MemRdData_SnpData, ID, directory.ID);
-        req.send(msg);
+    //Process(I, load, State){
+    //    msg = Req(MemRdData_SnpData, ID, directory.ID);
+    //    req.send(msg);
 
-        await{
-          when Cmp_S:
-            State = S;
-            await{
-                when MemData:
-                    cl=MemData.cl;
-                    load;
-                    break;
-            }
-        }
-    }
+    //    await{
+    //      when Cmp_S:
+    //        State = S;
+    //        await{
+    //            when MemData:
+    //                cl=MemData.cl;
+    //                load;
+    //                break;
+    //        }
+    //    }
+    //}
 
     Process(I, store, State){
         msg = Req(MemRd_A_SnpInv, ID, directory.ID);
@@ -237,6 +364,105 @@ Architecture cache {
                     store;
                     break;
             }
+
+          when BISnpData:
+            msg = Req(BIConflict, ID, BISnpData.src);
+            rwd.send(msg);
+
+            await{
+                // Completion comes first, we may progress and invalidate after
+                when Cmp_E:
+                    State = M;
+                    await{
+                        when MemData:
+                            cl=MemData.cl;
+                            store;
+                            break;
+                            // We cannot just move back to stable M, because BIConflictAck alone doesn't tell us to downgrade to S or I
+                            await{
+                                when BIConflictAck:
+                                    // We are no longer clean, must dirty evict first
+                                    msg = Rwd(MemWr_S, ID, directory.ID, cl);
+                                    rwd.send(msg);
+
+                                    // Would be nice if we could just move to M_evict_BISnpInv instead - avoid code duplicates
+                                    await{
+                                          when Cmp:
+                                            msg = BIRsp(BIRspS, ID, Cmp.src);
+                                            birsp.send(msg);
+                                            State = S;
+                                            break;
+                                    }
+                            }
+                    }
+                // ConflictAck comes first, we may invalidate and wait for completion after
+                when BIConflictAck:
+                    // State is clean, no need to run evict message first, can respond directly
+                    msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                    birsp.send(msg);
+                    State = I;
+
+                    await{
+                        when Cmp_E:
+                            State = M;
+                            await{
+                                when MemData:
+                                    cl=MemData.cl;
+                                    store;
+                                    break;
+                            }
+                    }
+            }
+
+          when BISnpInv:
+              msg = Req(BIConflict, ID, BISnpInv.src);
+              rwd.send(msg);
+
+              await{
+                  // Completion comes first, we may progress and invalidate after
+                  when Cmp_E:
+                      State = M;
+                      await{
+                          when MemData:
+                              cl=MemData.cl;
+                              store;
+
+                              // We cannot just move back to stable M, because BIConflictAck alone doesn't tell us to downgrade to S or I
+                              await{
+                                  when BIConflictAck:
+                                      // We are no longer clean, must dirty evict first
+                                      msg = Rwd(MemWr_I, ID, directory.ID, cl);
+                                      rwd.send(msg);
+
+                                      // Would be nice if we could just move to M_evict_BISnpInv instead - avoid code duplicates
+                                      await{
+                                          when Cmp:
+                                              msg = BIRsp(BIRspI, ID, Cmp.src);
+                                              birsp.send(msg);
+                                              State = I;
+                                              break;
+                                      }
+                              }
+                      }
+
+                  // ConflictAck comes first, we may invalidate and wait for completion after
+                  when BIConflictAck:
+                     // State is clean, no need to run evict message first, can respond directly
+                     msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                     birsp.send(msg);
+                     State = I;
+
+                     await{
+                         when Cmp_E:
+                             State = M;
+                             await{
+                                 when MemData:
+                                     cl=MemData.cl;
+                                     store;
+                                     break;
+                            }
+                    }
+             }
         }
     }
 
@@ -270,11 +496,51 @@ Architecture cache {
                 store;
                 State = M;
                 break;
-            // TODO check if possible to receive in clean state
-            // when BISnpData:
-                // Same as BISnpInv, but should go back to S state and reply with BIRspS
+            when BISnpData:
+                msg = Req(BIConflict, ID, BISnpData.src);
+                rwd.send(msg);
+
+                await{
+                    // Completion comes first, we may progress and invalidate after
+                    when Cmp_E:
+                        // Clean state, no need to wait for MemData here
+                        store;
+                        State = M;
+
+                        // We cannot just move back to stable M, because BIConflictAck alone doesn't tell us to downgrade to S or I
+                        await{
+                            when BIConflictAck:
+                                // We are no longer clean, must dirty evict first
+                                msg = Rwd(MemWr_S, ID, directory.ID, cl);
+                                rwd.send(msg);
+
+                                // Would be nice if we could just move to M_evict_BISnpInv instead - avoid code duplicates
+                                await{
+                                    when Cmp:
+                                        msg = BIRsp(BIRspS, ID, Cmp.src);
+                                        birsp.send(msg);
+                                        State = S;
+                                        break;
+                                }
+                        }
+
+                    // ConflictAck comes first, we may invalidate and wait for completion after
+                    when BIConflictAck:
+                        // State is clean, no need to run evict message first, can respond directly
+                        msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        State = S;
+
+                        await{
+                            when Cmp_E:
+                                store;
+                                State = M;
+                                break;
+                        }
+                }
+
             when BISnpInv:
-                msg = Rwd(BIConflict, ID, BISnpInv.src);
+                msg = Req(BIConflict, ID, BISnpInv.src);
                 rwd.send(msg);
 
                 await{
@@ -294,7 +560,7 @@ Architecture cache {
                                 // Would be nice if we could just move to M_evict_BISnpInv instead - avoid code duplicates
                                 await{
                                     when Cmp:
-                                        msg = BIRsp(BIRspI, ID, BISnpInv.src);
+                                        msg = BIRsp(BIRspI, ID, Cmp.src);
                                         birsp.send(msg);
                                         State = I;
                                         break;
@@ -304,20 +570,15 @@ Architecture cache {
                     // ConflictAck comes first, we may invalidate and wait for completion after
                     when BIConflictAck:
                         // State is clean, no need to run evict message first, can respond directly
-                        msg = BIRsp(BIRspI, ID, BISnpInv.src);
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
                         birsp.send(msg);
                         State = I;
 
                         await{
                             when Cmp_E:
-                                // We are no longer clean, wait for MemData
-				await{
-				    when MemData:
-				        cl=MemData.cl;
-                                        store;
-                                        State = M;
-				        break;
-			        }
+                                store;
+                                State = M;
+                                break;
                         }
                 }
         }
@@ -340,6 +601,53 @@ Architecture cache {
             // In conclusion, do not do anything here, simply make sure that the 2 requests are no blocking each other
             //     (progress should happen with interleaved messages)
             // However, this means that we could receive BISnp message although we are already back to I stable state.
+
+            when BISnpInv:
+                // Let's skip the BIConflict flow, since dev is not blocking
+                // Instead, we just stall until Cmp before replying to BISnpInv
+                //msg = Req(BIConflict, ID, BISnpInv.src);
+                //rwd.send(msg);
+
+                await{
+                    // Completion comes first, we may progress and process BISnpInv after
+                    when Cmp:
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        birsp.send(msg);
+
+                        State = I;
+                        break;
+
+                        // Stall until BIConflict is resolved
+                        //await{
+                        //    when BIConflictAck:
+                        //        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        //        birsp.send(msg);
+                        //        State = I;
+                        //        break;
+                        //}
+
+                    // ConflictAck comes first, process BISnpInv and wait for completion after
+                    //when BIConflictAck:
+                    //    msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                    //    birsp.send(msg);
+                    //    State = I;
+
+                    //    await{
+                    //        // Stall until MemClnEvct_I is resolved
+                    //        when Cmp:
+                    //            State = I;
+                    //            break;
+                    //    }
+                }
+
+            when BISnpData:
+                await{
+                    when Cmp:
+                        msg = BIRsp(BIRspI, ID, Cmp.src);
+                        birsp.send(msg);
+                        State = I;
+                        break;
+                }
         }
     }
 
@@ -352,7 +660,7 @@ Architecture cache {
     //
     //    await{
     //        when Cmp:
-    //            msg = BIRsp(BIRspS, ID, BISnpCur.src);
+    //            msg = BIRsp(BIRspS, ID, Cmp.src);
     //            birsp.send(msg);
     //            break;
     //    }
@@ -366,7 +674,7 @@ Architecture cache {
 
         // await{
         //     when Cmp:
-        //        msg = BIRsp(BIRspS, ID, BISnpData.src);
+        //        msg = BIRsp(BIRspS, ID, Cmp.src);
         //        birsp.send(msg);
         //        break;
         // }
@@ -417,7 +725,7 @@ Architecture cache {
             when BISnpData:
                 await{
                     when Cmp:
-                        msg = BIRsp(BIRspI, ID, BISnpData.src);
+                        msg = BIRsp(BIRspI, ID, Cmp.src);
                         birsp.send(msg);
                         State = I;
                         break;
@@ -425,7 +733,7 @@ Architecture cache {
             when BISnpInv:
                 await{
                     when Cmp:
-                        msg = BIRsp(BIRspI, ID, BISnpInv.src);
+                        msg = BIRsp(BIRspI, ID, Cmp.src);
                         birsp.send(msg);
                         State = I;
                         break;
@@ -454,7 +762,7 @@ Architecture cache {
 
         await{
             when Cmp:
-                msg = BIRsp(BIRspS, ID, BISnpData.src);
+                msg = BIRsp(BIRspS, ID, Cmp.src);
                 birsp.send(msg);
                 State = S;
                 break;
@@ -468,7 +776,7 @@ Architecture cache {
 
         await{
             when Cmp:
-                msg = BIRsp(BIRspI, ID, BISnpInv.src);
+                msg = BIRsp(BIRspI, ID, Cmp.src);
                 birsp.send(msg);
                 State = I;
                 break;
@@ -509,7 +817,7 @@ Architecture cache {
     //
     //    await{
     //        when Cmp:
-    //            msg = BIRsp(BIRspE, ID, BISnpCur.src);
+    //            msg = BIRsp(BIRspE, ID, Cmp.src);
     //            birsp.send(msg);
     //            break;
     //    }
@@ -530,7 +838,7 @@ Architecture cache {
 
         // await{
         //    when Cmp:
-        //       msg = BIRsp(BIRspI, ID, BISnpInv.src);
+        //       msg = BIRsp(BIRspI, ID, Cmp.src);
         //       birsp.send(msg);
         //       State = I;
         //       break;
@@ -549,25 +857,35 @@ Architecture directory {
     Stable{I, S, E, M}
 
     // I ////////////////////////////////////////////////////////
-    Process(I, MemRd_S_SnpData, S){
+    //Process(I, MemRd_S_SnpData, S){
+    //   // Responding with Cmp_E is also valid, but discouraged since S was resquested (specs say so ...)
+    //   msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+    //   ndr.send(msg);
+    //   msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+    //   drs.send(msg);
+    //   //owner = MemRd_S_SnpData.src;
+    //   cache.add(MemRd_S_SnpData.src);
+    //}
+
+    Process(I, MemRd_S_SnpData, E){
        // Responding with Cmp_E is also valid, but discouraged since S was resquested (specs say so ...)
-       msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+       msg = Ndr(Cmp_E, ID, MemRd_S_SnpData.src);
        ndr.send(msg);
        msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
        drs.send(msg);
-       //owner = MemRd_S_SnpData.src;
-       cache.add(MemRd_S_SnpData.src);
+       owner = MemRd_S_SnpData.src;
+       //cache.add(MemRd_S_SnpData.src);
     }
     
     // Not used currently in Cache specs
-    Process(I, MemRdData_SnpData, E){
-       // No meta value specified, respond with E
-       msg = Ndr(Cmp_E, ID, MemRdData_SnpData.src);
-       ndr.send(msg);
-       msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
-       drs.send(msg);
-       owner = MemRdData_SnpData.src;
-    }
+    //Process(I, MemRdData_SnpData, E){
+    //   // No meta value specified, respond with E
+    //   msg = Ndr(Cmp_E, ID, MemRdData_SnpData.src);
+    //   ndr.send(msg);
+    //   msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
+    //   drs.send(msg);
+    //   owner = MemRdData_SnpData.src;
+    //}
 
     Process(I, MemRd_A_SnpInv, M){
        msg = Ndr(Cmp_E, ID, MemRd_A_SnpInv.src);
@@ -575,6 +893,15 @@ Architecture directory {
        msg = Drs(MemData, ID, MemRd_A_SnpInv.src, cl);
        drs.send(msg);
        owner = MemRd_A_SnpInv.src;
+    }
+
+    Process(I, MemInv_A_SnpInv, M){
+       msg = Ndr(Cmp_E, ID, MemInv_A_SnpInv.src);
+       ndr.send(msg);
+       // Requestor didn't ask for data
+       //msg = Drs(MemData, ID, MemInv_A_SnpInv.src, cl);
+       //drs.send(msg);
+       owner = MemInv_A_SnpInv.src;
     }
 
     // S ////////////////////////////////////////////////////////
@@ -587,14 +914,14 @@ Architecture directory {
     }
     
     // Not used currently in Cache specs
-    Process(S, MemRdData_SnpData){
-       // No meta value specified, respond with S
-       msg = Ndr(Cmp_S, ID, MemRdData_SnpData.src);
-       ndr.send(msg);
-       msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
-       drs.send(msg);
-       cache.add(MemRdData_SnpData.src);
-    }
+    //Process(S, MemRdData_SnpData){
+    //   // No meta value specified, respond with S
+    //   msg = Ndr(Cmp_S, ID, MemRdData_SnpData.src);
+    //   ndr.send(msg);
+    //   msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
+    //   drs.send(msg);
+    //   cache.add(MemRdData_SnpData.src);
+    //}
 
     Process(S, MemRd_A_SnpInv){
        // 1- If is in the sharer list, remove from sharer list
@@ -602,9 +929,24 @@ Architecture directory {
        //   - Only clean sharers, so can receive MemClnEvct or BIRspI, all should be in the await block (messages shouldn't block each other)
        // 3- Once all are invalidated, reply back to requestor
 
+       requestor = MemRd_A_SnpInv.src;
+
        // Requestor shouldn't be a sharer, since he requested the Data, but this cannot hurt
        if cache.contains(MemRd_A_SnpInv.src){
            cache.del(MemRd_A_SnpInv.src);
+
+           if cache.count() == 0{
+                msg = Ndr(Cmp_E, ID, requestor);
+                ndr.send(msg);
+                msg = Drs(MemData, ID, requestor, cl);
+                drs.send(msg);
+                // Finally, update internal state
+                owner = requestor;
+                cache.clear();
+                undefine requestor;
+                State=M;
+                break;
+           }
        }
 
        msg = BISnp(BISnpInv, ID, ID);
@@ -615,13 +957,14 @@ Architecture directory {
                 
                 // Once all are invalidated, reply to requestor with perm and data
                 if cache.count() == 0{
-                    msg = Ndr(Cmp_E, ID, MemRd_A_SnpInv.src);
+                    msg = Ndr(Cmp_E, ID, requestor);
                     ndr.send(msg);
-                    msg = Drs(MemData, ID, MemRd_A_SnpInv.src, cl);
+                    msg = Drs(MemData, ID, requestor, cl);
                     drs.send(msg);
                     // Finally, update internal state
-                    owner = MemRd_A_SnpInv.src;
+                    owner = requestor;
                     cache.clear();
+                    undefine requestor;
                     State=M;
                     break;
                 }
@@ -648,9 +991,25 @@ Architecture directory {
        //   - Only clean sharers, so can receive MemClnEvct or BIRspI, all should be in the await block (messages shouldn't block each other)
        // 3- Once all are invalidated, reply back to requestor
 
+       requestor = MemInv_A_SnpInv.src;
+
        // Requestor shouldn't be a sharer, since he requested the Data, but this cannot hurt
        if cache.contains(MemInv_A_SnpInv.src){
            cache.del(MemInv_A_SnpInv.src);
+
+           if cache.count() == 0{
+               msg = Ndr(Cmp_E, ID, requestor);
+               ndr.send(msg);
+               // Requestor didn't ask for data
+               //msg = Drs(MemData, ID, requestor, cl);
+               //drs.send(msg);
+               // Finally, update internal state
+               owner = requestor;
+               cache.clear();
+               undefine requestor;
+               State=M;
+               break;
+           }
        }
 
        msg = BISnp(BISnpInv, ID, ID);
@@ -661,14 +1020,15 @@ Architecture directory {
                 
                 // Once all are invalidated, reply to requestor with perm and data
                 if cache.count() == 0{
-                    msg = Ndr(Cmp_E, ID, MemInv_A_SnpInv.src);
+                    msg = Ndr(Cmp_E, ID, requestor);
                     ndr.send(msg);
                     // Requestor didn't ask for data
-                    // msg = Drs(MemData, ID, MemInv_A_SnpInv.src, cl);
-                    // drs.send(msg);
+                    //msg = Drs(MemData, ID, requestor, cl);
+                    //drs.send(msg);
                     // Finally, update internal state
-                    owner = MemInv_A_SnpInv.src;
+                    owner = requestor;
                     cache.clear();
+                    undefine requestor;
                     State=M;
                     break;
                 }
@@ -712,18 +1072,22 @@ Architecture directory {
        msg = BISnp(BISnpData, ID, owner);
        bisnp.send(msg);
 
+
+       requestor = MemRd_S_SnpData.src;
+
        await{
            when BIRspS:
                // Completion
                undefine owner;
                cache.add(BIRspS.src);
-               cache.add(MemRd_S_SnpData.src);
+               cache.add(requestor);
 
-               msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+               msg = Ndr(Cmp_S, ID, requestor);
                ndr.send(msg);
-               msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+               msg = Drs(MemData, ID, requestor, cl);
                drs.send(msg);
-               
+
+               undefine requestor;
                State=S;
                break;
 
@@ -732,12 +1096,13 @@ Architecture directory {
                cache.del(BIRspI.src);
                undefine owner;
 
-               msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+               msg = Ndr(Cmp_S, ID, requestor);
                ndr.send(msg);
-               msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+               msg = Drs(MemData, ID, requestor, cl);
                drs.send(msg);
 
-               cache.add(MemRd_S_SnpData.src);
+               cache.add(requestor);
+               undefine requestor;
                State=S;
                break;
 
@@ -782,18 +1147,21 @@ Architecture directory {
        msg = BISnp(BISnpInv, ID, owner);
        bisnp.send(msg);
 
+       requestor = MemRd_A_SnpInv.src;
+
        await{
            when BIRspI:
                // Completion
                cache.del(BIRspI.src);
                undefine owner;
 
-               msg = Ndr(Cmp_E, ID, MemRd_A_SnpInv.src);
+               msg = Ndr(Cmp_E, ID, requestor);
                ndr.send(msg);
-               msg = Drs(MemData, ID, MemRd_A_SnpInv.src, cl);
+               msg = Drs(MemData, ID, requestor, cl);
                drs.send(msg);
 
-               owner = MemRd_A_SnpInv.src;
+               owner = requestor;
+               undefine requestor;
                cache.clear();
                State=M;
                break;
@@ -870,18 +1238,22 @@ Architecture directory {
        msg = BISnp(BISnpData, ID, owner);
        bisnp.send(msg);
 
+       requestor = MemRd_S_SnpData.src;
+
        await{
            when BIRspS:
                // Completion
                undefine owner;
                cache.add(BIRspS.src);
-               cache.add(MemRd_S_SnpData.src);
+               cache.add(requestor);
 
-               msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
-               ndr.send(msg);
-               msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
-               drs.send(msg);
+               msg = Ndr(Cmp_S, ID, requestor);
                
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
                State=S;
                break;
 
@@ -889,13 +1261,14 @@ Architecture directory {
                // Completion
                undefine owner;
                cache.del(BIRspI.src);
-               cache.add(MemRd_S_SnpData.src);
+               cache.add(requestor);
 
-               msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+               msg = Ndr(Cmp_S, ID, requestor);
                ndr.send(msg);
-               msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+               msg = Drs(MemData, ID, requestor, cl);
                drs.send(msg);
 
+               undefine requestor;
                State=S;
                break;
 
@@ -940,6 +1313,8 @@ Architecture directory {
        msg = BISnp(BISnpInv, ID, owner);
        bisnp.send(msg);
 
+       requestor = MemRd_A_SnpInv.src;
+
        await{
            when BIRspI:
                // Completion
@@ -950,12 +1325,13 @@ Architecture directory {
                cache.del(BIRspI.src);
                undefine owner;
 
-               msg = Ndr(Cmp_E, ID, MemRd_A_SnpInv.src);
+               msg = Ndr(Cmp_E, ID, requestor);
                ndr.send(msg);
-               msg = Drs(MemData, ID, MemRd_A_SnpInv.src, cl);
+               msg = Drs(MemData, ID, requestor, cl);
                drs.send(msg);
 
-               owner = MemRd_A_SnpInv.src;
+               owner = requestor;
+               undefine requestor;
                cache.clear();
                State=M;
                break;

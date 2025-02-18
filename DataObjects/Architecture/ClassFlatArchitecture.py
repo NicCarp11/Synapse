@@ -74,7 +74,9 @@ class FlatArchitecture(BaseArchitecture,
             for trans_tree in self.state_sub_tree_dict[stable_state]:
                 trans_trace_list = self.get_trans_traces(trans_tree, stable_state, self.stable_states)
                 for trans_trace in trans_trace_list:
-                    state_trans_trace_dict[stable_state] = Trace(trans_trace)
+                    trace = Trace(trans_trace)
+                    if trace.final_state.stable:
+                        state_trans_trace_dict[stable_state] = trace
 
         # Use the system tuple results for the classification
         CommClassFunc(state_trans_trace_dict, self.global_arch)

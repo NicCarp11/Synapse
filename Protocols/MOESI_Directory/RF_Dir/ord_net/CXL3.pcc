@@ -1,0 +1,1493 @@
+# NrCaches 3
+
+// M2S -> Host-to-Device (H2D)
+// S2M -> Device-to-Host (D2H)
+
+// Network:
+//
+// Primary Memory Protocol: 6 channels (HDM-DB - device coherent with Back-Invalidate (multi-host))
+// Note that 6 additionnal channels (mirrored from these ones) exists for direct P2P (type 2 device/accelerators to memory direct).
+//
+// Assumptions:
+// 
+// - Device must implement an inclusive snoop filter.
+//   i.e., devices maintain top-level directory structure.
+//   * p136. device snoop filter can track 2 state or 3 state: I vs A or I/S/A 
+//     where A is any state of possible MESI state in the host
+//     _ that means CXL.mem technically work as MI or MSI protocol.
+//       fine, bc ownership is identical in MESI and MSI, so SWMR isn't affected.
+//
+// Ordering Rules: (sec. 3.4, p162)
+// 
+// Upstream:
+// - S2M NdR/Drs Cmp-* >>> S2M NdR/Drs BIConflictAck: BIConflictAck must NOT pass prior Cmp* to the same address 
+//     _ impl detail p152: tag field from RwD msg must be re-used in BIConflict msg, which is then re-used by the device in Ndr (Cmp or BIConflictAck)
+//                         tags are not required to be unique, but fabric enforces strict (fifo?) ordering of similar tags
+//                         Note: the tag of the BISnp msg is device initiated, so only BIRsp need to re-use it.
+// - S2M NdR/Drs > S2M BISnp: required for deadlock avoidance, i.e., Ndr/Drs must be allowed to pass BISnp to prevent deadlocks
+// - other cases: no-ordering requirements.
+// Downstream:
+// - M2S BIRsp > M2S Req: BIRsp must be allowed to pass Req to prevent deadlocks 
+// - M2S BIRsp > M2S RwD: BIRsp must be allowed to pass RwD to prevent deadlocks 
+// - M2S RwD > M2S Req: RwD must be allowed to pass Req to prevent deadlocks
+// - other cases: no-ordering requirements.
+// Summary:
+//   * M2S: BIRsp > RwD > Req (priority order)
+//   * S2M: NdR/Drs > BISnp (priority order)
+//   * S2M: Cmp-* >>> BIConflictAck (fifo ordering required to prevent deadlocks, within NdR channel)
+//
+// - p.133 "Within a channel, there are no ordering rules, but exceptions to this are described in Section 3.3.11"
+// Sec. 3.3.11
+//   * BISnp can block Req, but RwD cannot be blocked by BISnp
+//       _ I infer that forwarded requests can prevent progress of GetX, but not evict (PutX).
+//       * "This rule impacts RwD MemWr* to only use SnpType=No-op (e.g., WB w/o Snoop),
+//          The requester must first get ownership using M2S Req message (2-phase write in Sec. 2.4.4)"
+//       _ I guess this is just a reminder that it isn't possible to do direct memory writes in Shared FAM HDM-DB,
+//         as the BISnp to other sharers could deadlock (everybody blocks
+//         on their 1-phase write, that attempt to invalidate other requestors).
+//   * Other rules concern ordering relationship of CXL.io and CXL.cache messages with CXL.mem channels.
+//   * p135. If outstanding S2M BISnp, then device must block all M2S Req to the same address until S2M BISnp is complete.
+//       _ i.e., device must wait for termination of Fwd msg or Inv msg before processing more req.
+//       * p136. BISnp due to snoop filter capacity evictions should not block M2S Req, unless snoop filter capacity is actually full
+//         i.e., with proper design, M2S Req blocking is rare and not induced by snoop filter capacity limits.
+//   * p135. M2S RwD channel must drain without dependence on M2S Req or S2M BISnp
+//       _ i.e., hosts must be able to progress on evict/put msg without being blocked by other req or fwd req.
+//
+// Sec. 3.3.11.1 - Buried Cache State rules
+//   - When Req / RwD messages are legal to send, wrt. current buried cache state (state known by host home-agent, e.g., host-side cxl cache).
+//
+// What is different from MESI?
+//
+//   - BISnp conflicts:
+//     e.g., host receives BiSnpInv but has outstanding request MemRd
+//     - host must perform extra handshake with device to clear conflict,
+//       either it receives its original response, or an ACK to the conflict message.
+//     * case 1: early conflict (p.168):
+//       - if host receives BIConflictAck first,
+//         it responds with BIRspI to clear up conflict and let the device proceed with original request.
+//     * case 2: late conflict (p.168):
+//       - if host observes its original response (Cmp-E) before the BIConflictAck,
+//         it must process BISnpInv and downgrade itself before responding with BIRspI
+//
+//   - Block BISnp: CXL defines block commands to BISnp 2 or 4 cache line aligned 128B or 256B blocks
+//     * Host home-agent ensures that affected cache lines are all invalid before replying, using its own internal coherence
+//     * response is either a single BIRespIBlk for the entire block, or individual BIRspI for each cache line (with idx of CL in the block).
+//
+//   - Speculative Memory Reads (Sec. 3.5.3.1)
+//     host can send MemSpecRd to device to enable reading from memory and resolving coherence in parallel.
+//     (specs say that it can help lower latency, but consumes more BW, so not always a good idea in loaded conditions)
+//
+//   - 
+//
+// Messages:
+//   _ Meta Value:
+//     * For Req and RwD, this is the burried cache state (final cache line state in the host)
+//       _ I: host is invalid, device can give exclusive ownership as needed
+//       _ A: host wants to retain its dirty or exclusive access, device must keep cache line in I state for the in-device caches
+//       _ S: host has at most sharable copy, device can share cache line with in-device caches
+//     * For Rsp and Drs, this is the cache line state in the dev snoop filter
+//   _ SnoopTypes:
+//     * SnpData: want at least a shared copy (dev can return exclusive copy also)
+//     * SnpCur: want current copy, cannot be cached, no state change
+//     * SnpInv: want exclusive copy
+//
+// *M2S Req
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | OpCode        | Meta Value | SnpType | S2M-NdR       | S2M-Drs | Desc                                                          | Equivalent       |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | MemRd         | A          | SnpInv  | Cmp-E         | MemData | Read memory and acquire exclusive ownership                   | GetM             |
+//   | MemRd         | S          | SnpData | Cmp-E/S       | MemData | Read memory and acquire sharable copy                         | GetS             |
+//   | MemRd         | None       | SnpCur  | Cmp           | MemData | Read current value (uncachable read)                          | ???              |
+//   | MemRd         | None       | SnpInv  | Cmp           | MemData | Read current value (uncachable read) & invalidate dev/sharers | ???              |
+//   | MemInv        | A          | SnpInv  | Cmp-E         | None    | Acquire ownership without data                                | ???              |
+//   | MemInvNT      | A          | SnpInv  | Cmp-E         | None    | Acquire ownership without data & NT (expect writeback soon)   | ???              |
+//   | MemInv        | I          | SnpInv  | Cmp           | None    | Invalidate (and flush) other caches (in dev or other hosts)   | ???              |
+//   | MemRdData     | None       | SnpData | Cmp-E/S       | MemData | Read memory and acquire S or E copy (ignore meta value)       | ???              |
+//   | MemClnEvct    | I          | None    | Cmp           | None    | Host drops E or S copy from its caches (downgrade to I)       | PutX (data-less) |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+// *M2S RwD
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | MemWr         | I          | None    | Cmp           | None    | Writeback, do not keep cachable copy                          | WB+PutX          |
+//   | MemWr         | A          | None    | Cmp           | None    | Writeback, retain current copy and state                      | WB               |
+//   | MemWr         | I          | SnpInv  | Cmp           | None    | Writeback without ownership, Dev must Inv sharers first (illegal in multi-host setting | ??? |
+//   | MemWrPtl      | I          | SnpInv  | Cmp           | None    | Same as above, but partial write: contains a mask (dev merge) | ???              |
+//   | MemRdFill     | None       | None    | Cmp           | MemData | Read without changing coherence state, useful to merge partial writes in the host | ??? |
+//   | BIConflict    | None       | None    | BIConflictAck | None    | Response to BISnp to indicate conflict detected, garbage payload | ???           |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+// *M2S BIRsp
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | BIRspI        | N/A        | N/A    | None          | None    | BISnp complete for 1 cache line, Host cache state is I        | ???              |
+//   | BIRspS        | N/A        | N/A    | None          | None    | BISnp complete for 1 cache line, Host cache state is S        | ???              |
+//   | BIRspE        | N/A        | N/A    | None          | None    | BISnp complete for 1 cache line, Host cache state is E        | ???              |
+//   | BIRsp*Blk     | N/A        | N/A    | None          | None    | BISnp complete for X cache lines, Host cache state is (I,S,E) | ???              |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+// *S2M BISnp
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | BISnpCur      | N/A       | N/A     |               |         | Dev request current copy but not cachable state               | ???              |
+//   | BISnpData     | N/A       | N/A     |               |         | Dev request S cachable copy (returning E is valid)            | Fwd_GetS         |
+//   | BISnpInv      | N/A       | N/A     |               |         | Dev request E exclusive cachable copy                         | Fwd_GetM, Inv    |
+//   | BISnp*Blk     | N/A       | N/A     |               |         | Same as above, but in Bulk (2, 4 contiguous cache lines)      | ???              |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+// *S2M NdR
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | Cmp           | same M2S   | N/A    |               |         | Completion Ack to MemWr, MemRd, MemInv                        | ???              |
+//   | Cmp-S         | same M2S   | N/A    |               |         | Completion Ack, Host now has an S copy                        | ???              |
+//   | Cmp-E         | same M2S   | N/A    |               |         | Completion Ack, Host now has an E copy                        | ???              |
+//   | Cmp-M         | same M2S   | N/A    |               |         | Completion Ack, Host now has an M copy                        | ???              |
+//   | BIConflictAck | N/A        | N/A    |               |         | Completion of BIConflict handshake                            | ???              |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+// *S2M Drs
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//   | MemData       | same M2S   | N/A    |               |         | Memory read data                                              | ???              |
+//   -----------------------------------------------------------------------------------------------------------------------------------------------------
+//
+
+
+Network { 
+          Ordered ndr;      // D2H Non-Data-Response (eq. resp PutX_Ack)
+          Unordered drs;      // D2H Data-Response (eq. resp GetX_Ack)
+          Unordered bisnp;    // D2H Backward-Invalidate-Snoop (eq. fwd Fwd_GetX, Inv)
+          Unordered birsp;    // H2D Backward-Invalidate-Response (eq. rsp Inv_Ack, WB)
+          Unordered rwd;      // H2D Request-with-Data (eq. req PutX)
+          Unordered req2;      // H2D Request-without-Data (eq. req GetX)
+};
+
+Cache {
+    State I;
+    Data cl;
+    // int[0..NrCaches] acksReceived = 0;
+    // int[0..NrCaches] acksExpected = 0;
+    int[0..1] last_bisnp = 0;
+} set[NrCaches] cache;
+
+Directory {
+    State I;
+    Data cl;
+    set[NrCaches] ID cache;
+    ID owner;
+    ID requestor;
+} directory;
+
+Message Req{};
+Message Rwd{
+    Data cl;
+};
+Message Ndr{};
+Message Drs{
+    Data cl;
+};
+Message BISnp{};
+Message BIRsp{};
+
+
+Architecture cache {
+
+    Stable{I, S, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, load, State){
+        msg = Req(MemRd_S_SnpData, ID, directory.ID);
+        req2.send(msg);
+
+        await{
+          when Cmp_S:
+            State = S;
+            await{
+                when MemData:
+                    cl=MemData.cl;
+                    load;
+                    break;
+            }
+
+          when Cmp_E:
+            State = E;
+            await{
+                when MemData:
+                    cl=MemData.cl;
+                    load;
+                    break;
+            }
+
+          when BISnpData:
+              msg = Req(BIConflict, ID, BISnpData.src);
+              rwd.send(msg);
+              await{
+                  when BIConflictAck:
+                      msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+	              birsp.send(msg);
+	              await{
+	        	  when Cmp_S:
+	        	    State = S;
+	        	    await{
+	        		when MemData:
+	        		    cl=MemData.cl;
+	        		    load;
+	        		    break;
+	        	    }
+
+	        	  when Cmp_E:
+	        	    State = E;
+	        	    await{
+	        		when MemData:
+	        		    cl=MemData.cl;
+	        		    load;
+	        		    break;
+	        	    }
+	              }
+	          when Cmp_S:
+	            State = S;
+                    last_bisnp[0] = 1;
+	            await{
+	        	when MemData:
+	        	    cl=MemData.cl;
+	        	    load;
+	        	    break;
+                            // There's still one outstanding BIConflictAck -> must downgrade to S later when it is finally received
+	            }
+
+	          when Cmp_E:
+	            State = E;
+                    last_bisnp[0] = 1;
+	            await{
+	        	when MemData:
+	        	    cl=MemData.cl;
+	        	    load;
+	        	    break;
+                            // There's still one outstanding BIConflictAck -> must downgrade to S later when it is finally received
+	            }
+              }
+
+          when BISnpInv:
+              msg = Req(BIConflict, ID, BISnpInv.src);
+              rwd.send(msg);
+              await{
+                  when BIConflictAck:
+                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+	              birsp.send(msg);
+	              await{
+	        	  when Cmp_S:
+	        	    State = S;
+	        	    await{
+	        		when MemData:
+	        		    cl=MemData.cl;
+	        		    load;
+	        		    break;
+	        	    }
+
+	        	  when Cmp_E:
+	        	    State = E;
+	        	    await{
+	        		when MemData:
+	        		    cl=MemData.cl;
+	        		    load;
+	        		    break;
+	        	    }
+	              }
+	          when Cmp_S:
+	            State = S;
+                    last_bisnp[0] = 0;
+	            await{
+	        	when MemData:
+	        	    cl=MemData.cl;
+	        	    load;
+	        	    break;
+                            // There's still one outstanding BIConflictAck -> must downgrade to I later when it is finally received
+	            }
+
+	          when Cmp_E:
+	            State = E;
+                    last_bisnp[0] = 0;
+	            await{
+	        	when MemData:
+	        	    cl=MemData.cl;
+	        	    load;
+	        	    break;
+                            // There's still one outstanding BIConflictAck -> must downgrade to I later when it is finally received
+	            }
+              }  
+          }
+    }
+
+    //Process(I, load, State){
+    //    msg = Req(MemRdData_SnpData, ID, directory.ID);
+    //    req2.send(msg);
+
+    //    await{
+    //      when Cmp_S:
+    //        State = S;
+    //        await{
+    //            when MemData:
+    //                cl=MemData.cl;
+    //                load;
+    //                break;
+    //        }
+    //    }
+    //}
+
+    Process(I, store, State){
+        msg = Req(MemRd_A_SnpInv, ID, directory.ID);
+        req2.send(msg);
+
+        await{
+          when Cmp_E:
+            State = M;
+            await{
+                when MemData:
+                    cl=MemData.cl;
+                    store;
+                    break;
+            }
+
+          when BISnpData:
+              msg = Req(BIConflict, ID, BISnpData.src);
+              rwd.send(msg);
+
+              await{
+                  when BIConflictAck:
+                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+	              birsp.send(msg);
+	              await{
+	        	  when Cmp_E:
+	        	    State = M;
+	        	    await{
+	        		when MemData:
+	        		    cl=MemData.cl;
+	        		    store;
+	        		    break;
+	        	    }
+	              }
+                  when Cmp_E:
+	            State = M;
+                    last_bisnp[0] = 1;
+	            await{
+	        	when MemData:
+	        	    cl=MemData.cl;
+	        	    store;
+	        	    break;
+	            }
+              }
+
+          when BISnpInv:
+              msg = Req(BIConflict, ID, BISnpInv.src);
+              rwd.send(msg);
+
+              await{
+                  when BIConflictAck:
+                      msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+	              birsp.send(msg);
+	              await{
+	        	  when Cmp_E:
+	        	    State = M;
+	        	    await{
+	        		when MemData:
+	        		    cl=MemData.cl;
+	        		    store;
+	        		    break;
+	        	    }
+	              }
+                  when Cmp_E:
+	            State = M;
+                    last_bisnp[0] = 0;
+	            await{
+	        	when MemData:
+	        	    cl=MemData.cl;
+	        	    store;
+	        	    break;
+	            }
+              }
+        }
+    }
+
+    Process(I, BISnpData, I){
+        // State is already invalid, just reply
+        msg = BIRsp(BIRspI, ID, BISnpData.src);
+        birsp.send(msg);
+    }
+
+    Process(I, BISnpInv, I){
+        // State is already invalid, just reply
+        msg = BIRsp(BIRspI, ID, BISnpInv.src);
+        birsp.send(msg);
+    }
+
+    Process(I, BIConflictAck, I){
+        // State is already invalid, just reply
+        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+        birsp.send(msg);
+        last_bisnp[0] = 0;
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, load){
+        load;
+    }
+
+    Process(S, store, State){
+        msg = Req(MemInv_A_SnpInv, ID, directory.ID);
+        req2.send(msg);
+
+        await{
+            when Cmp_E:
+                store;
+                State = M;
+                break;
+
+            when BISnpData:
+                msg = Req(BIConflict, ID, BISnpData.src);
+                rwd.send(msg);
+		await {
+                    when BIConflictAck:
+                        msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        await {
+                            when Cmp_E:
+				store;
+				State = M;
+				break;
+                        }
+                    when Cmp_E:
+			store;
+			State = M;
+                        last_bisnp[0] = 1;
+			break;
+                }
+
+            when BISnpInv:
+                msg = Req(BIConflict, ID, BISnpInv.src);
+                rwd.send(msg);
+		await {
+                    when BIConflictAck:
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        await {
+                            when Cmp_E:
+				store;
+				State = M;
+				break;
+                        }
+                    when Cmp_E:
+			store;
+			State = M;
+                        last_bisnp[0] = 0;
+			break;
+                }
+        }
+    }
+
+    Process(S, evict, State){
+        msg = Req(MemClnEvct_I, ID, directory.ID);
+        req2.send(msg);
+
+        await{
+            when Cmp:
+                State = I;
+                break;
+
+            when BISnpInv:
+                msg = Req(BIConflict, ID, BISnpInv.src);
+                rwd.send(msg);
+                await{
+                    when BIConflictAck:
+			msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+			birsp.send(msg);
+                        await {
+                            when Cmp:
+				State = I;
+				break;
+                        }
+                    when Cmp:
+                        State = I;
+                        last_bisnp[0] = 0;
+                        break;
+                }
+
+            when BISnpData:
+                msg = Req(BIConflict, ID, BISnpData.src);
+                rwd.send(msg);
+                await{
+                    when BIConflictAck:
+			msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+			birsp.send(msg);
+                        await {
+                            when Cmp:
+				State = I;
+				break;
+                        }
+                    when Cmp:
+                        State = I;
+                        last_bisnp[0] = 1;
+                        break;
+                }
+        }
+    }
+
+    // Device wants an uncachable current copy of cache line
+    // We omit it for now, since directory will never use it
+    // TODO: double check if possible to receive in a Clean state
+    // Process(S, BISnpCur){
+    //    msg = Rwd(MemWr_S, ID, BISnpCur.src, cl);
+    //    rwd.send(msg);
+    //
+    //    await{
+    //        when Cmp:
+    //            msg = BIRsp(BIRspS, ID, Cmp.src);
+    //            birsp.send(msg);
+    //            break;
+    //    }
+    // }
+
+    // Device wants a shared copy of cache line
+    // TODO: double check if possible to receive in a Clean state
+    Process(S, BISnpData){
+        // msg = Rwd(MemWr_S, ID, BISnpData.src, cl);
+        // rwd.send(msg);
+
+        // await{
+        //     when Cmp:
+        //        msg = BIRsp(BIRspS, ID, Cmp.src);
+        //        birsp.send(msg);
+        //        break;
+        // }
+
+        // State is clean, just reply
+        msg = BIRsp(BIRspS, ID, BISnpData.src);
+        birsp.send(msg);
+    }
+
+    // Device wants exclusive copy of cache line
+    Process(S, BISnpInv, I){
+        // State is clean, just reply
+        msg = BIRsp(BIRspI, ID, BISnpInv.src);
+        birsp.send(msg);
+    }
+
+    Process(S, BIConflictAck, State){
+        if last_bisnp[0] == 1 {
+            // State is clean, no need to run evict message first, can respond directly
+            msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+            birsp.send(msg);
+            last_bisnp[0] = 0;
+            State = S;
+        } else {
+            // State is clean, no need to run evict message first, can respond directly
+            msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+            birsp.send(msg);
+            State = I;
+        }
+    }
+
+    // M ////////////////////////////////////////////////////////
+    Process(M, load){
+        load;
+    }
+
+    Process(M, store){
+        store;
+    }
+    
+    Process(M, evict, State){
+        msg = Rwd(MemWr_I, ID, directory.ID, cl);
+        rwd.send(msg);
+
+        await{
+            when Cmp:
+                State = I;
+                break;
+
+            when BISnpData:
+                msg = Req(BIConflict, ID, BISnpData.src);
+                rwd.send(msg);
+                await{
+                    when BIConflictAck:
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        await {
+                            when Cmp:
+                                State = I;
+                                break;
+                        }
+                    when Cmp:
+                        State = I;
+                        last_bisnp[0] = 1;
+                        break;
+                }
+            when BISnpInv:
+                msg = Req(BIConflict, ID, BISnpInv.src);
+                rwd.send(msg);
+                await{
+                    when BIConflictAck:
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        await {
+                            when Cmp:
+                                State = I;
+                                break;
+                        }
+                    when Cmp:
+                        State = I;
+                        last_bisnp[0] = 0;
+                        break;
+                }
+        }
+    }
+
+    // Device wants an uncachable current copy of cache line
+    // We omit it for now, since directory will never use it
+    // Process(M, BISnpCur){
+    //    msg = Rwd(MemWr_A, ID, BISnpCur.src, cl);
+    //    rwd.send(msg);
+
+    //    await{
+    //        when Cmp:
+    //            msg = BIRsp(BIRspE, ID, BISnpCur.src);
+    //            birsp.send(msg);
+    //            break;
+    //    }
+    // }
+
+    // Device wants a shared copy of cache line
+    Process(M, BISnpData, State){
+        msg = Rwd(MemWr_S, ID, BISnpData.src, cl);
+        rwd.send(msg);
+
+        await{
+            when Cmp:
+                msg = BIRsp(BIRspS, ID, Cmp.src);
+                birsp.send(msg);
+                State = S;
+                break;
+        }
+    }
+
+    // Device wants exclusive copy of cache line
+    Process(M, BISnpInv, State){
+        msg = Rwd(MemWr_I, ID, BISnpInv.src, cl);
+        rwd.send(msg);
+
+        await{
+            when Cmp:
+                msg = BIRsp(BIRspI, ID, Cmp.src);
+                birsp.send(msg);
+                State = I;
+                break;
+        }
+    }
+
+    Process(M, BIConflictAck, State){
+        if last_bisnp[0] == 1 {
+        msg = Rwd(MemWr_S, ID, BIConflictAck.src, cl);
+        rwd.send(msg);
+
+        await{
+            when Cmp:
+                msg = BIRsp(BIRspS, ID, Cmp.src);
+                birsp.send(msg);
+                State = S;
+                last_bisnp[0] = 0;
+                break;
+        }
+        } else {
+        msg = Rwd(MemWr_I, ID, BIConflictAck.src, cl);
+        rwd.send(msg);
+
+        await{
+            when Cmp:
+                msg = BIRsp(BIRspI, ID, Cmp.src);
+                birsp.send(msg);
+                State = I;
+                break;
+        }
+        }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, load){
+        load;
+    }
+
+    Process(E, store, M){
+        store;
+    }
+
+    Process(E, evict, State){
+        msg = Req(MemClnEvct_I, ID, directory.ID);
+        req2.send(msg);
+
+        await{
+            when Cmp:
+                State = I;
+                break;
+            when BISnpData:
+                msg = Req(BIConflict, ID, BISnpData.src);
+                rwd.send(msg);
+                await{
+                    when BIConflictAck:
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        await {
+                            when Cmp:
+                                State = I;
+                                break;
+                        }
+                    when Cmp:
+                        State = I;
+                        last_bisnp[0] = 1;
+                        break;
+                }
+            when BISnpInv:
+                msg = Req(BIConflict, ID, BISnpInv.src);
+                rwd.send(msg);
+                await{
+                    when BIConflictAck:
+                        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+                        birsp.send(msg);
+                        await {
+                            when Cmp:
+                                State = I;
+                                break;
+                        }
+                    when Cmp:
+                        State = I;
+                        last_bisnp[0] = 0;
+                        break;
+                }
+        }
+    }
+
+    // Device wants an uncachable current copy of cache line
+    // We omit it for now, since directory will never use it
+    // TODO: check if possible to receive in a Clean state
+    // Process(E, BISnpCur){
+    //    msg = Rwd(MemWr_A, ID, BISnpCur.src, cl);
+    //    rwd.send(msg);
+    //
+    //    await{
+    //        when Cmp:
+    //            msg = BIRsp(BIRspE, ID, Cmp.src);
+    //            birsp.send(msg);
+    //            break;
+    //    }
+    // }
+
+    // Device wants a shared copy of cache line
+    Process(E, BISnpData, S){
+        // State is clean, just reply
+        msg = BIRsp(BIRspS, ID, BISnpData.src);
+        birsp.send(msg);
+    }
+
+    // Device wants exclusive copy of cache line
+    Process(E, BISnpInv, I){
+        // TODO check if we can actually skip the CL writeback
+        // msg = Rwd(MemWr_I, ID, BISnpInv.src, cl);
+        // rwd.send(msg);
+
+        // await{
+        //    when Cmp:
+        //       msg = BIRsp(BIRspI, ID, Cmp.src);
+        //       birsp.send(msg);
+        //       State = I;
+        //       break;
+        // }
+        
+        // State is clean, just reply
+        msg = BIRsp(BIRspI, ID, BISnpInv.src);
+        birsp.send(msg);
+    }
+    
+    Process(E, BIConflictAck, State){
+        if last_bisnp[0] == 1 {
+        // State is clean, no need to run evict message first, can respond directly
+        msg = BIRsp(BIRspS, ID, BIConflictAck.src);
+        birsp.send(msg);
+        last_bisnp[0] = 0;
+        State = S;
+        } else {
+        // State is clean, no need to run evict message first, can respond directly
+        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
+        birsp.send(msg);
+        State = I;
+        }
+    }
+
+}
+
+
+Architecture directory {
+
+    Stable{I, S, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    //Process(I, MemRd_S_SnpData, S){
+    //   // Responding with Cmp_E is also valid, but discouraged since S was resquested (specs say so ...)
+    //   msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+    //   ndr.send(msg);
+    //   msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+    //   drs.send(msg);
+    //   //owner = MemRd_S_SnpData.src;
+    //   cache.add(MemRd_S_SnpData.src);
+    //}
+
+    Process(I, MemRd_S_SnpData, E){
+       // Responding with Cmp_E is also valid, but discouraged since S was resquested (specs say so ...)
+       msg = Ndr(Cmp_E, ID, MemRd_S_SnpData.src);
+       ndr.send(msg);
+       msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+       drs.send(msg);
+       owner = MemRd_S_SnpData.src;
+       //cache.add(MemRd_S_SnpData.src);
+    }
+    
+    // Not used currently in Cache specs
+    //Process(I, MemRdData_SnpData, E){
+    //   // No meta value specified, respond with E
+    //   msg = Ndr(Cmp_E, ID, MemRdData_SnpData.src);
+    //   ndr.send(msg);
+    //   msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
+    //   drs.send(msg);
+    //   owner = MemRdData_SnpData.src;
+    //}
+
+    Process(I, MemRd_A_SnpInv, M){
+       msg = Ndr(Cmp_E, ID, MemRd_A_SnpInv.src);
+       ndr.send(msg);
+       msg = Drs(MemData, ID, MemRd_A_SnpInv.src, cl);
+       drs.send(msg);
+       owner = MemRd_A_SnpInv.src;
+    }
+
+    Process(I, MemInv_A_SnpInv, M){
+       msg = Ndr(Cmp_E, ID, MemInv_A_SnpInv.src);
+       ndr.send(msg);
+       // Requestor didn't ask for data
+       msg = Drs(MemData, ID, MemInv_A_SnpInv.src, cl);
+       drs.send(msg);
+       owner = MemInv_A_SnpInv.src;
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, MemRd_S_SnpData){
+       msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
+       ndr.send(msg);
+       msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
+       drs.send(msg);
+       cache.add(MemRd_S_SnpData.src);
+    }
+    
+    // Not used currently in Cache specs
+    //Process(S, MemRdData_SnpData){
+    //   // No meta value specified, respond with S
+    //   msg = Ndr(Cmp_S, ID, MemRdData_SnpData.src);
+    //   ndr.send(msg);
+    //   msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
+    //   drs.send(msg);
+    //   cache.add(MemRdData_SnpData.src);
+    //}
+
+    Process(S, MemRd_A_SnpInv){
+       // 1- If is in the sharer list, remove from sharer list
+       // 2- Invalidate all sharers, and wait for reply
+       //   - Only clean sharers, so can receive MemClnEvct or BIRspI, all should be in the await block (messages shouldn't block each other)
+       // 3- Once all are invalidated, reply back to requestor
+
+       requestor = MemRd_A_SnpInv.src;
+
+       // Requestor shouldn't be a sharer, since he requested the Data, but this cannot hurt
+       if cache.contains(MemRd_A_SnpInv.src){
+           cache.del(MemRd_A_SnpInv.src);
+
+           if cache.count() == 0{
+                msg = Ndr(Cmp_E, ID, requestor);
+                ndr.send(msg);
+                msg = Drs(MemData, ID, requestor, cl);
+                drs.send(msg);
+                // Finally, update internal state
+                owner = requestor;
+                cache.clear();
+                undefine requestor;
+                State=M;
+                break;
+           }
+       }
+
+       msg = BISnp(BISnpInv, ID, ID);
+       bisnp.mcast(msg, cache);
+       await{
+           when BIRspI:
+                cache.del(BIRspI.src);
+                
+                // Once all are invalidated, reply to requestor with perm and data
+                if cache.count() == 0{
+                    msg = Ndr(Cmp_E, ID, requestor);
+                    ndr.send(msg);
+                    msg = Drs(MemData, ID, requestor, cl);
+                    drs.send(msg);
+                    // Finally, update internal state
+                    owner = requestor;
+                    cache.clear();
+                    undefine requestor;
+                    State=M;
+                    break;
+                }
+
+           //when MemClnEvct_I:
+           //     // Respond but wait for BIRspI to remove from sharers (otherwise we may concluse BISnp flow while some BIRsp are still in flight)
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+           //     // cache.del(MemClnEvct_I.src);
+
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+        }
+
+    }
+
+    Process(S, MemInv_A_SnpInv){
+       // 1- Should be in the sharer list, remove from sharer list
+       // 2- Invalidate all sharers, and wait for reply
+       //   - Only clean sharers, so can receive MemClnEvct or BIRspI, all should be in the await block (messages shouldn't block each other)
+       // 3- Once all are invalidated, reply back to requestor
+
+       requestor = MemInv_A_SnpInv.src;
+
+       // Requestor could be a sharer, since he did not request the data
+       if cache.contains(requestor){
+           cache.del(requestor);
+
+           if cache.count() == 0 {
+               msg = Ndr(Cmp_E, ID, requestor);
+               ndr.send(msg);
+               // Requestor didn't ask for data
+               //msg = Drs(MemData, ID, requestor, cl);
+               //drs.send(msg);
+               // Finally, update internal state
+               owner = requestor;
+               cache.clear();
+               undefine requestor;
+               State=M;
+               break;
+           } else {
+	       msg = BISnp(BISnpInv, ID, ID);
+	       bisnp.mcast(msg, cache);
+           }
+           // requestor was originally a sharer, adding it back after mcasting BISnp message
+	   cache.add(requestor);
+       } else {
+           msg = BISnp(BISnpInv, ID, ID);
+           bisnp.mcast(msg, cache);
+       }
+
+       await{
+           when BIRspI:
+                cache.del(BIRspI.src);
+                
+                // Once all are invalidated, reply to requestor with perm and data
+                if cache.count() == 0 {
+                    msg = Ndr(Cmp_E, ID, requestor);
+                    ndr.send(msg);
+                    // Requestor didn't ask for data
+                    msg = Drs(MemData, ID, requestor, cl);
+                    drs.send(msg);
+                    // Finally, update internal state
+                    owner = requestor;
+                    cache.clear();
+                    undefine requestor;
+                    State=M;
+                    break;
+                } else {
+                    if cache.count() == 1 {
+                    if cache.contains(requestor) {
+		        msg = Ndr(Cmp_E, ID, requestor);
+		        ndr.send(msg);
+		        // Requestor didn't ask for data
+		        // msg = Drs(MemData, ID, requestor, cl);
+		        // drs.send(msg);
+		        // Finally, update internal state
+		        owner = requestor;
+		        cache.clear();
+		        undefine requestor;
+		        State=M;
+		        break;
+                    }
+                    }
+                }
+
+           //when MemClnEvct_I:
+           //     // Respond but wait for BIRspI to remove from sharers (otherwise we may concluse BISnp flow while some BIRsp are still in flight)
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+           //     // cache.del(MemClnEvct_I.src);
+
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+        }
+
+    }
+
+    Process(S, MemClnEvct_I){
+       msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+       ndr.send(msg);
+       cache.del(MemClnEvct_I.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // M ////////////////////////////////////////////////////////
+
+    // Host wants S sharable copy
+    Process(M, MemRd_S_SnpData){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I before BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpData, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemRd_S_SnpData.src;
+
+       await{
+           when BIRspS:
+               // Completion
+               undefine owner;
+               cache.add(BIRspS.src);
+               cache.add(requestor);
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
+               State=S;
+               break;
+
+           when BIRspI:
+               // Completion
+               cache.del(BIRspI.src);
+               undefine owner;
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               cache.add(requestor);
+               undefine requestor;
+               State=S;
+               break;
+
+           //when MemClnEvct_I:
+           //     // (Self eviction clean), simply respond and wait for completion message
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+
+           when MemWr_S:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_S.src);
+                ndr.send(msg);
+                if MemWr_S.src == owner{
+                    cl = MemWr_S.cl;
+                }
+           
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+    
+    // Host wants E/M exclusive copy
+    Process(M, MemRd_A_SnpInv){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I and then BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpInv, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemRd_A_SnpInv.src;
+
+       await{
+           when BIRspI:
+               // Completion
+               cache.del(BIRspI.src);
+               undefine owner;
+
+               msg = Ndr(Cmp_E, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               owner = requestor;
+               undefine requestor;
+               cache.clear();
+               State=M;
+               break;
+
+           //when MemClnEvct_I:
+           //     // (Self eviction clean), simply respond and wait for completion message
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+
+    // Host wants E/M exclusive copy
+    Process(M, MemInv_A_SnpInv){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I and then BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpInv, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemInv_A_SnpInv.src;
+
+       await{
+           when BIRspI:
+               // Completion
+               cache.del(BIRspI.src);
+               undefine owner;
+
+               msg = Ndr(Cmp_E, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               owner = requestor;
+               undefine requestor;
+               cache.clear();
+               State=M;
+               break;
+
+           //when MemClnEvct_I:
+           //     // (Self eviction clean), simply respond and wait for completion message
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+
+
+
+    // Host wants to WB and drop its copy
+    Process(M, MemWr_I){
+       msg = Ndr(Cmp, ID, MemWr_I.src);
+       ndr.send(msg);
+       cache.del(MemWr_I.src);
+
+       if owner == MemWr_I.src{
+            cl = MemWr_I.cl;
+            undefine owner;
+            State=I;
+       }
+    }
+
+    // Host wants to WB but retain sharable copy
+    Process(M, MemWr_S){
+       msg = Ndr(Cmp, ID, MemWr_S.src);
+       ndr.send(msg);
+
+       if owner == MemWr_S.src{
+            cl = MemWr_S.cl;
+            undefine owner;
+            State=S;
+       }
+    }
+
+    // Host wants to drop its Clean copy
+    Process(M, MemClnEvct_I){
+       msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+       ndr.send(msg);
+       cache.del(MemClnEvct_I.src);
+
+       if owner == MemClnEvct_I.src{
+            undefine owner;
+            State=I;
+       }
+    }
+
+    // E ////////////////////////////////////////////////////////
+
+    // Host wants S sharable copy
+    Process(E, MemRd_S_SnpData){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I before BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpData, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemRd_S_SnpData.src;
+
+       await{
+           when BIRspS:
+               // Completion
+               undefine owner;
+               cache.add(BIRspS.src);
+               cache.add(requestor);
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
+               State=S;
+               break;
+
+           when BIRspI:
+               // Completion
+               undefine owner;
+               cache.del(BIRspI.src);
+               cache.add(requestor);
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
+               State=S;
+               break;
+
+           //when MemClnEvct_I:
+           //     // (Self eviction clean), simply respond and wait for completion message
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+
+           when MemWr_S:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_S.src);
+                ndr.send(msg);
+                if MemWr_S.src == owner{
+                    cl = MemWr_S.cl;
+                }
+           
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+ 
+    // Host wants E/M exclusive copy
+    Process(E, MemRd_A_SnpInv){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I and then BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpInv, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemRd_A_SnpInv.src;
+
+       await{
+           when BIRspI:
+               // Completion
+               // Host can only send Req/RwD, or respond to BISnp.
+               // If Req/RwD are received first, Host will wait for completion before responding to BISnp
+               // In all, BIResp can only be received last, even with unordered network.
+               // TODO: check if we are not more restrictive than specs for blocked Req/RwD here
+               cache.del(BIRspI.src);
+               undefine owner;
+
+               msg = Ndr(Cmp_E, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               owner = requestor;
+               undefine requestor;
+               cache.clear();
+               State=M;
+               break;
+
+           //when MemClnEvct_I:
+           //     // (Self eviction clean), simply respond and wait for completion message
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+
+    // Host wants E/M exclusive copy
+    Process(E, MemInv_A_SnpInv){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I and then BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpInv, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemInv_A_SnpInv.src;
+
+       await{
+           when BIRspI:
+               // Completion
+               // Host can only send Req/RwD, or respond to BISnp.
+               // If Req/RwD are received first, Host will wait for completion before responding to BISnp
+               // In all, BIResp can only be received last, even with unordered network.
+               // TODO: check if we are not more restrictive than specs for blocked Req/RwD here
+               cache.del(BIRspI.src);
+               undefine owner;
+
+               msg = Ndr(Cmp_E, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               owner = requestor;
+               undefine requestor;
+               cache.clear();
+               State=M;
+               break;
+
+           //when MemClnEvct_I:
+           //     // (Self eviction clean), simply respond and wait for completion message
+           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+           //     ndr.send(msg);
+
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+
+
+
+    // Host wants to WB and drop its copy
+    Process(E, MemWr_I){
+       msg = Ndr(Cmp, ID, MemWr_I.src);
+       ndr.send(msg);
+       cache.del(MemWr_I.src);
+
+       if owner == MemWr_I.src{
+            cl = MemWr_I.cl;
+            undefine owner;
+            State=I;
+       }
+    }
+
+    // Host wants to WB but retain sharable copy
+    Process(E, MemWr_S){
+       msg = Ndr(Cmp, ID, MemWr_S.src);
+       ndr.send(msg);
+
+       if owner == MemWr_S.src{
+            cl = MemWr_S.cl;
+            undefine owner;
+            cache.add(MemWr_S.src);
+            State=S;
+       }
+    }
+
+    // Host wants to drop its Clean copy
+    Process(E, MemClnEvct_I){
+       msg = Ndr(Cmp, ID, MemClnEvct_I.src);
+       ndr.send(msg);
+       cache.del(MemClnEvct_I.src);
+
+       if owner == MemClnEvct_I.src{
+            undefine owner;
+            State=I;
+       }
+    }
+
+}

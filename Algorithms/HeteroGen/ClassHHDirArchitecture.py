@@ -165,6 +165,9 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
         Debug.psection(f"Higher level directory controller for {higher_level.parser.filename}")
         ProtoCCTablePrinter().ptransitiontable(list(higher_level.directory.get_architecture_transitions()))
 
+        Debug.psection(f"Higher level cache controller for {higher_level.parser.filename}")
+        ProtoCCTablePrinter().ptransitiontable(list(higher_level.cache.get_architecture_transitions()))
+
         if self.gdbg:
             self.dbg_tree_graph(self.gen_graph(fsm_transitions))
 
@@ -299,6 +302,30 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
                     transition_guard = transition.guard
                     if (remote_proxy_dir_state in remote_proxy_dir_arch.cache_state_fwd_message_access_map
                             and transition_guard in remote_proxy_dir_arch.dir_state_req_base_message_access_map[remote_proxy_dir_state]):
+                        # TODO: FIX THIS: BIConflict - BIConflictAck handshake is annoying for nesting flows
+                        #     - Basically, BISnp{Data,Inv} are legitimate forwarded requests **IIF state is stable**
+                        #     - When the controller **is not** in a stable state,
+                        #         then BISnp{Data,Inv} must first trigger the BIConflict{,Ack} handshake
+                        #         and only then after the nested flow should begin when receiving a BIConflictAck
+                        #         (that can be before or after completion of the requests, depending on the directory serialization order)
+                        #     - For now, we simply **filter out** BISnp{Data,Inv} from sub-nesting, when state is not stable
+                        #
+                        # TODO: Long Term Fix:
+                        #     - Ideally, when BISnp{Data,Inv} are received from a transient state; we should move to a `$_BISnp{Data,Inv}_BIConflictAck` new transient state
+                        #     - If BIConflictAck is received first, then we should nest a load (BISnpData) or store (BISnpInv) transition tree
+                        #     - If Cmp comes first, then move to the final stable state and do not perform any sub-nesting for the BISnpData/BISnpInv
+                        #     ----- When the BIConflictAck is received later in a stable state, we must keep track of what was the last BISnp msg (BISnp{Data,Inv}) to properly downgrade the local cluster
+                        #     -------- would be easier if this information was contained inside the BIConflictAck msg (not the case according to the specs)
+                        #     -------- what may introduce extra state to note down any outstanding BISnp msg (would be much easier than introducing more stable states names with that information)
+                        #
+                        # TODO: Putting it all together: WE NEED SUB-NESTING specific translation tables; that map (requestor orig state, requestor transient state, forwarded request) -> translated access
+                        #     1- BISnp{Data,Inv} are candidates for sub-nesting IIF no BIConflict handshake flow is necessary (no outstanding request from the controller, i.e., state is stable)
+                        #     ---> sub-nesting is only for transient states, so BISnp{Data,Inv} should never be sub-nested
+                        #     2- BIConflictAck is a candidate for sub-nesting IIF there is an outstanding BISnp{Data,Inv} msg (state may or may not be stable, depending on directory serialization order)
+                        #     ---> BIConflictAck is always a candidate for subnesting, and should translate into accesses corresponding to the last received BISnp msg (try to use $_BISnp*_BIConflictAck transient states and sub-nesting specific translation tables)
+                        #     ---> BIConflictAck is also a candidate for regular nesting (from a stable state) // if neither the stable state nor the message specifies that last outstanding BISnp msg, then just eagerly downgrade to I (or introduce more stable states that denotes the pending downgrade state)
+                        if not transition.start_state.stable and transition.guard.msg_type.msg_type == "BISnpL2":
+                            continue
                         start_state = self.get_transitions_from_graph(remote_proxy_access_tree)[0].start_state
                         store_access_tree = self.get_access_proxy_dir_graph(remote_proxy_dir_arch.dir_state_req_base_message_access_map[remote_proxy_dir_state][transition_guard], [start_state])
                         if not store_access_tree:
@@ -348,15 +375,37 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
                         #ProtoCCTablePrinter().ptransitiontable(trans)
                         terminal_nodes: List[CompoundState] = self.get_terminal_nodes_by_attribute(graph)
                         root_node = self.get_root_node_by_attribute(graph)
+
+                        mutated = False
                         for trans2 in trans:
                             if trans2.start_state == root_node:
                                 trans2.start_state = start_state
+                                mutated = True
                             if trans2.final_state in terminal_nodes:
                                 trans2.final_state = final_state
+                                mutated = True
+
+                        # TODO: the root_node and terminal_nodes are not updated correctly (mismatching state names), so the block above fails
+                        #     cheap fix: if the previous block didn't change anything, then simply update start_state to chain transitions
+                        #     NOTE 1: this isn't robust, might cause other problems -- fix the root_node & terminal nodes first
+                        #     NOTE 2: currently, this is only affecting {MSI,MESI}_C_CXL & transitions with BIConflictAck guards to change start state from, e.g., I_C_I_store to S_C_I_store (downgrade S,E to I with store pending)
+                        if not mutated:
+                            for trans2 in trans:
+                                if trans2.start_state == final_state and trans2.guard == guard:
+                                    trans2.start_state = start_state
+                                    mutated = True
+
                         #ProtoCCTablePrinter().ptransitiontable(trans)
 
-                        nest_graph.remove_edge(start_state, final_state)
+                        # Remove the edge carrying the exact transition - otherwise it just pops the one inserted last
+                        # nest_graph.remove_edge(start_state, final_state)
+                        for u,v,k,d in nest_graph.edges(data=True, keys=True):
+                            if d['transition'] == transition:
+                                nest_graph.remove_edge(u,v,key=k)
+                                break
+
                         self.add_transition_to_graph(nest_graph, trans)
+
                         #self.clear_root_node_attribute(graph)
                         #self.clear_terminal_nodes_attribute(graph)
                         #self.set_root_node_attribute(graph, start_state)
@@ -376,6 +425,9 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
             # memory accesses complete in the order required by the memory consistency model. If no remote proxy
             # processor is required, then prune all event handling to maximize concurrency among remote accesses to
             # different addresses
+
+            ProtoCCTablePrinter().ptransitiontable(self.get_transitions_from_graph(nest_graph))
+
             if not remote_proxy_processor:
                 nest_graph = self.prune_event_execution(nest_graph)
 

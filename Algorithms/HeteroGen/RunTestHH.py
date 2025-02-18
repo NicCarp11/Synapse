@@ -112,6 +112,8 @@ class RunHH(Debug):
         RunSLICCModular(cluster, self.sys_name)
         # GenerateMurphi([cluster_1, cluster_2], 'HH_DeadlockFreedom', None)
 
+        #GenerateMurphi([Cluster(tuple([cache_machine_2, cache_machine_2, cache_machine_2, directory_machine_2]), 'C1', False)], 'HH_DeadlockFreedom', None)
+
         #RunMurphiCheck([cluster_1], sys_name, None, 4000, 'DeadlockFreedom')
         #RunSLICCModular(cluster_1, sys_name)
 
