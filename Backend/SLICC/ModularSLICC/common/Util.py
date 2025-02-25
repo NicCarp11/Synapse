@@ -173,10 +173,20 @@ def get_in_ports(arch: BaseArchitecture) -> 'OrderedDict[str, str]':
         assert arch.machine.check_dir()
         direction = "To"
 
-    net_node = arch.global_arch.network.network_node
-    definitions = net_node.getChildren()
-    for net in definitions:
-        net_name = net.getChildren()[1].getText() + direction
+    #net_node = arch.global_arch.network.network_node
+    #definitions = net_node.getChildren()
+    #for net in definitions:
+    #    net_name = net.getChildren()[1].getText() + direction
+    #    assert net_name not in in_ports
+    #    in_ports[net_name] = _gen_port_name(net_name)
+
+    for net in arch.global_arch.network.ordered_networks.keys():
+        net_name = net + direction
+        assert net_name not in in_ports
+        in_ports[net_name] = _gen_port_name(net_name)
+
+    for net in arch.global_arch.network.unordered_networks.keys():
+        net_name = net + direction
         assert net_name not in in_ports
         in_ports[net_name] = _gen_port_name(net_name)
 
@@ -195,10 +205,20 @@ def get_out_ports(arch: BaseArchitecture) -> 'OrderedDict[str, str]':
         assert arch.machine.check_dir()
         direction = "From"
 
-    net_node = arch.global_arch.network.network_node
-    definitions = net_node.getChildren()
-    for net in definitions:
-        net_name = net.getChildren()[1].getText() + direction
+    #net_node = arch.global_arch.network.network_node
+    #definitions = net_node.getChildren()
+    #for net in definitions:
+    #    net_name = net.getChildren()[1].getText() + direction
+    #    assert net_name not in out_ports
+    #    out_ports[net_name] = _gen_port_name(net_name)
+
+    for net in arch.global_arch.network.ordered_networks.keys():
+        net_name = net + direction
+        assert net_name not in out_ports
+        out_ports[net_name] = _gen_port_name(net_name)
+
+    for net in arch.global_arch.network.unordered_networks.keys():
+        net_name = net + direction
         assert net_name not in out_ports
         out_ports[net_name] = _gen_port_name(net_name)
 

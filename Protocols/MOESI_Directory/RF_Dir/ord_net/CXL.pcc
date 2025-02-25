@@ -1248,7 +1248,7 @@ Architecture directory {
                cache.add(requestor);
 
                msg = Ndr(Cmp_S, ID, requestor);
-               
+
                ndr.send(msg);
                msg = Drs(MemData, ID, requestor, cl);
                drs.send(msg);
