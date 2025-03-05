@@ -104,9 +104,12 @@ class GenMachineStruct:
         if str(definition.getChildren()[0]) in getattr(arch, "proxy_keys", {}).values():
             result = ""
             for m_name, m_type in SLICCTokens.proxy_key_fields.items():
-                assert m_type == ProtoParserBase.t_id
+                #assert m_type == ProtoParserBase.t_id
                 if len(result) > 0:
                     result += "\n"
-                result += f"{SLICCTokens.st_mach_id} {str(definition.getChildren()[0])}_{m_name}, desc=\"... TODO ...\";"
+                if m_type == ProtoParserBase.t_id:
+                    result += f"{SLICCTokens.st_mach_id} {str(definition.getChildren()[0])}_{m_name}, desc=\"... TODO ...\";"
+                elif m_type == ProtoParserBase.t_bool:
+                    result += f"{SLICCTokens.st_bool} {str(definition.getChildren()[0])}_{m_name}, desc=\"... TODO ...\";"
             return result
         raise NotImplementedError

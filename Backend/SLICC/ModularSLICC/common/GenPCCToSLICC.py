@@ -94,7 +94,14 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
         if op == ProtoParserBase.k_assign:
             # TODO: Gen architecture assignment
-            return self.gen_assignment(operation)
+            assignments = self.gen_assignment(operation)
+            if not assignments:
+                return None
+            for assignment in assignments.splitlines():
+                l, r = assignment.strip()[:-1].split(":=")
+                if l.strip() == r.strip():
+                    return None
+            return assignments
 
         elif op == ProtoParserBase.k_setfunc:
             return self.gen_set_function(operation) + self.end

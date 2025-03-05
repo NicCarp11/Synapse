@@ -79,7 +79,7 @@ class GenMsgStruct(TemplateHandler):
         return f"int {var}, desc=\"Integer {var}\"{self.end}"
 
     def _gen_bool(self, var: str) -> str:
-        raise NotImplementedError
+        return f"bool {var}, desc=\"Boolean {var}\"{self.end}"
 
     def _gen_msg(self, var: str) -> str:
         raise NotImplementedError

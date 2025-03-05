@@ -36,6 +36,7 @@ st_mach_id = "MachineID"
 st_net_dest = "NetDest"
 st_int = "int"
 st_data = "DataBlock"
+st_bool = "bool"
 
 # SLICC constant variable names
 k_in_msg = "in_msg"
@@ -108,4 +109,9 @@ base_message_vars = {
     "adr": ProtoParserBase.t_adr,
     "src": ProtoParserBase.t_id,
     "dst": ProtoParserBase.t_id,
+}
+
+proxy_key_fields = {
+    "src": ProtoParserBase.t_id,
+    "exclusiveL1": ProtoParserBase.t_bool,
 }

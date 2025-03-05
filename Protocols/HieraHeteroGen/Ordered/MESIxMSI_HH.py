@@ -37,8 +37,8 @@ from Debug.Monitor.ClassDebug import Debug
 # Ordered reply forwarding communication pattern protocols
 class MESIxMSI_HH(RunHH, Debug):
 
-    translation_table_first = {'load': ['load'], 'store': ['store']} # MESI
-    translation_table_second = {'load': ['load'], 'store': ['store']} # MSI
+    translation_table_first = {'load': ['load'], 'ifetch': ['load'], 'store': ['store']} # MESI
+    translation_table_second = {'load': ['load'], 'ifetch': ['load'], 'store': ['store']} # MSI
 
     #translation_table_first = {'load': ['acquire'], 'store': ['release']}  # RCC
     #translation_table_second = {'load': ['load'], 'store': ['store'], 'acquire': ['load'], 'release': ['store']}  # MSI
