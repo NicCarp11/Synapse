@@ -86,7 +86,7 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
                     for msg in to_remove:
                         self.dir_state_req_base_message_access_map[state].pop(msg)
             # TODO: FIX THIS: dirty manual translation table
-            elif arch_level.parser.filename.startswith("CXL4"):
+            elif arch_level.parser.filename.startswith("CXL4") or arch_level.parser.filename.startswith("CXL5"):
                 store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
                 load_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_load]
                 evict_access: Evict = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_evict]
@@ -103,7 +103,7 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
                         self.dir_state_req_base_message_access_map[state][evict_access] = store_access
                         if state.state.endswith("S"):
                             self.dir_state_req_base_message_access_map[state][biconflictack] = load_access
-                        elif state.state.endswith("I"):
+                        elif arch_level.parser.filename.startswith("CXL4") and state.state.endswith("I"):
                             self.dir_state_req_base_message_access_map[state][biconflictack] = store_access
                     if len(state.state) == 1:
                         if state not in self.dir_state_req_base_message_access_map:
@@ -113,6 +113,8 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
                         self.dir_state_req_base_message_access_map[state][evict_access] = store_access
                         self.dir_state_req_base_message_access_map[state][bisnpdata] = load_access
                         self.dir_state_req_base_message_access_map[state][bisnpinv] = store_access
+                        if arch_level.parser.filename.startswith("CXL5"):
+                            self.dir_state_req_base_message_access_map[state][biconflictack] = store_access
 
             # Union gives same result
             #self.dir_state_req_base_message_access_map.update(self.cache_state_fwd_message_access_map)
