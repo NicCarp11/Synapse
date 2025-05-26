@@ -63,6 +63,7 @@ class Level(NetworkxModelChecker, Debug):
 
         self.cache = None
         self.directory = None
+        self.l2_private = None
         self.mem = None
         self.snoop = False
 
@@ -70,6 +71,7 @@ class Level(NetworkxModelChecker, Debug):
             self.cache = FlatArchitecture(self.parser.get_cache_architecture())
         if self.parser.get_dir_architecture():
             self.directory = FlatArchitecture(self.parser.get_dir_architecture())
+            self.l2_private = FlatArchitecture(self.parser.get_dir_architecture())
 
         if self.parser.get_mem_architecture():
             if not self.directory:
@@ -199,4 +201,3 @@ class Level(NetworkxModelChecker, Debug):
         return [(tuple.symmetric_str_start_state(),
                  tuple.symmetric_str_final_state()),
                 tuple.symmetric_str_access_trace()]
-
