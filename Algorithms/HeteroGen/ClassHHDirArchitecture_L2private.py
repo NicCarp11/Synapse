@@ -584,8 +584,9 @@ class HHDirArchitecture_L2private(ArchTupleStateOrdering, NestTreeNetworkx, Flat
 
     def prune_state_for_l2_private(self, lower_level: Level):
         for state in lower_level.directory.stable_states:
-            for request_tree in lower_level.directory.state_sub_tree_dict[state]:
+            proxy_dir_arch: CompoundDirCacheArchitecture = self.get_arch_by_state(state)
+            for request_tree in proxy_dir_arch.state_sub_tree_dict[state]:
                 transition = self.get_transitions_by_start_state(request_tree, state)[0]
                 if not (isinstance(transition.guard, BaseAccess)) and transition.guard in \
                         lower_level.directory.dir_state_message_for_l2_private[state]:
-                    lower_level.directory.state_sub_tree_dict[state].remove(request_tree)
+                    proxy_dir_arch.state_sub_tree_dict[state].remove(request_tree)

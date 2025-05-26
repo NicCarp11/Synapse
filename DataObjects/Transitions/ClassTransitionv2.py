@@ -53,6 +53,9 @@ class Transition_v2(BaseTransition):
         # Communication class from ClassCommClassFunc
         self.comm_class: str = None
         self.serialized: bool = None
+        self.access = None
+        if isinstance(guard, Access) or isinstance(guard, Evict):
+            self.access: Union[Access, Evict] = guard
 
         # Inherits BaseTransition __str__ and __hash__ functions
         def __str__(self):

@@ -50,6 +50,7 @@ from MurphiLitmusTests.ClassLitmusTest import LitmusTest
 from MurphiLitmusTests.ClassThreadMapLitmusTest import MachThreadMapLitmusTest
 from MurphiLitmusTests.ClassLitmusInstruction import LoadInstruction
 from Backend.Murphi.RunMurphiModular import RunMurphiCheck, GenerateMurphi, CompileMurphi
+from Backend.SLICC.RunSLICCModular import RunSLICCModular
 
 from Debug.Monitor.MakeDir import make_dir, dir_up
 from Debug.Monitor.ClassDebug import Debug
@@ -78,8 +79,8 @@ class RunHH(Debug):
         level_1_2_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
         level_1_2_2 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
         level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
-        level_2_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
-        level_2_2_2 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+        # level_2_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+        # level_2_2_2 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
 
         # Generate higher level inter cluster protocol
 
@@ -96,40 +97,42 @@ class RunHH(Debug):
         l2_private_dir_1 = HHDirArchitecture_L2private(level_1_2_1, level_1_2_2, access_map_table, False)
 
         #L2 private for L2
-        l2_private_dir_2 = HHDirArchitecture_L2private(level_2_2_1, level_2_2_2, access_map_table, False)
+        # l2_private_dir_2 = HHDirArchitecture_L2private(level_2_2_1, level_2_2_2, access_map_table, False)
 
         Debug.psection(f"Cache controller L1")
         ProtoCCTablePrinter().ptransitiontable(list(level_1_1.cache.get_architecture_transitions()))
-        Debug.psection(f"Cache controller L2")
-        ProtoCCTablePrinter().ptransitiontable(list(level_2_1.cache.get_architecture_transitions()))
         Debug.psection(f"Cache controller L1_2 private")
         ProtoCCTablePrinter().ptransitiontable(list(level_1_2_1.directory.get_architecture_transitions()))
-        Debug.psection(f"Cache controller L2_2 private")
-        ProtoCCTablePrinter().ptransitiontable(list(level_2_2_1.directory.get_architecture_transitions()))
+        Debug.psection(f"Bridge")
+        ProtoCCTablePrinter().ptransitiontable(list(level_1_1.directory.get_architecture_transitions()))
+        Debug.psection(f"Directory")
+        ProtoCCTablePrinter().ptransitiontable(list(level_2_1.directory.get_architecture_transitions()))
         # Run ProtoGen for each level
         #ProtoNetworkxBase(level_2)
 
-        cache_machine_1 = Machine(level_1.cache)
-        directory_machine_2 = Machine(level_2.directory)
-        cache_machine_2 = Machine(level_2.cache)
-        hhcache_machine = Machine(level_1.directory)
+        level_1_2_1.directory.global_arch = level_1_1.directory.global_arch
+        Debug.psection(f"Cache controller L1_2 private")
+        ProtoCCTablePrinter().ptransitiontable(list(level_1_2_1.directory.get_architecture_transitions()))
+        cache_machine_1 = Machine(level_1_1.cache)
+        directory_machine_2 = Machine(level_2_1.directory)
+        # cache_machine_2 = Machine(level_2.cache)
+        hhcache_machine = Machine(level_1_1.directory)
+        l2_private = Machine(level_1_2_1.directory)
         #hhcache_machine = Machine(level_2.cache)
         #cache_machine_2 = Machine(hhgen_ctrl.arch_tuple[1])
 
         cluster_1 = Cluster(
-            tuple([cache_machine_1, cache_machine_1]) + tuple([hhcache_machine]),
+            tuple([cache_machine_1, directory_machine_2, hhcache_machine, l2_private]),
             'C1', False)
-        cluster_2 = Cluster(
-            tuple([cache_machine_2, ]) + tuple([hhcache_machine, directory_machine_2]),
-            'C2', False)
+        # cluster_2 = Cluster( tuple([cache_machine_2, ]) + tuple([hhcache_machine, directory_machine_2]), 'C2', False)
 
         #cluster_1.update_machine_archs(directory_machine_1.get_arch_list()[0], hhgen_ctrl)
         #cluster_2.update_machine_archs(hhcache_machine_2.get_arch_list()[0], hhgen_ctrl)
 
-        GenerateMurphi([cluster_1, cluster_2], 'HH_DeadlockFreedom', None)
+        # GenerateMurphi([cluster_1, cluster_2], 'HH_DeadlockFreedom', None)
 
         #RunMurphiCheck([cluster_1], sys_name, None, 4000, 'DeadlockFreedom')
-        #RunSLICCModular(cluster_1, sys_name)
+        RunSLICCModular(cluster_1, self.sys_name)
 
         #self.verify_flat_protocols(cache_machine_1, cache_machine_2, directory_machine, self.sys_name, 4)
 

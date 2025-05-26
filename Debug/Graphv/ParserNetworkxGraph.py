@@ -28,7 +28,7 @@
 
 import os
 from typing import List, Tuple, Any
-from graphviz import Digraph as gDigraph
+from graphviz import Digraph as gDigraph, ExecutableNotFound
 from networkx import DiGraph as nDigraph
 
 from DataObjects.ClassMultiDict import MultiDict
@@ -64,10 +64,13 @@ class ParserPCCGraph:
 
         self._pedges(edges)
 
-        if show_pdf:
-            self.graph.view(header, os.getcwd(), False)
-        else:
-            self.graph.render(header, os.getcwd())
+        try:
+            if show_pdf:
+                self.graph.view(header, os.getcwd(), False)
+            else:
+                self.graph.render(header, os.getcwd())
+        except ExecutableNotFound:
+            print("graphviz not found")
 
     def _pedges(self, edges, color='black'):
         multi_state_dict = MultiDict()

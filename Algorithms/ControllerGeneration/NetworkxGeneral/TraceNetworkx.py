@@ -151,6 +151,11 @@ class TreeNetworkx(TreeBaseNetworkx, Debug):
                 state_set.update(set(fsm_sub_graph.nodes))
         return state_set
 
+    def get_architecture_stable_states(self) -> List[State_v2]:
+        # Only fetches the _stable_ states of the architecture,
+        # i.e. non-transient states
+        return [state for state in self.get_architecture_states_verified() if state.stable]
+
     def get_architecture_transitions(self) -> Set[Transition_v2]:
         transition_set = set()
         for stable_state in self.state_sub_tree_dict:

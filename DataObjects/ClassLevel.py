@@ -201,3 +201,4 @@ class Level(NetworkxModelChecker, Debug):
         return [(tuple.symmetric_str_start_state(),
                  tuple.symmetric_str_final_state()),
                 tuple.symmetric_str_access_trace()]
+

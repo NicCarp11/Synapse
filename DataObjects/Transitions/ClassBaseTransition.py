@@ -95,7 +95,7 @@ class BaseTransition:
                 )
 
     def __repr__(self):
-        self.__str__()
+        return self.__str__()
 
     ## Hash function used by ProtoGen
     #  None

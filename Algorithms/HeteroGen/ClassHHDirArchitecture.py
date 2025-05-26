@@ -615,7 +615,7 @@ class HHDirArchitecture(ArchTupleStateOrdering, NestTreeNetworkx, FlatArchitectu
 
     # Update all remote caches to be aware of the new and renamed directory
     def update_remote_archs(self, new_arch: CompoundDirCacheArchitecture, levels: List[Level]):
-        #self.update_directory_names(new_arch, levels)
+        # self.update_directory_names(new_arch, levels)
         self.update_machines_global_arch(new_arch, levels)
 
     @staticmethod

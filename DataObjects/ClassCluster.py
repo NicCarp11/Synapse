@@ -90,6 +90,12 @@ class Cluster(SystemTuple):
                 global_arch_set.add(machine.arch.global_arch)
         return global_arch_set
 
+    def get_machine_architectures_by_type(self, mach_type: str) -> Set[FlatArchitecture]:
+        mach_arch_set: Set[FlatArchitecture] = set()
+        for machine in self.system_tuple:
+            if machine.arch.machine.mach_type == mach_type:
+                mach_arch_set.add(machine.arch)
+        return mach_arch_set
 
     ''' #HIERAGEN
     def replace_arch(self, old_arch: FlatArchitecture, new_arch: FlatArchitecture):

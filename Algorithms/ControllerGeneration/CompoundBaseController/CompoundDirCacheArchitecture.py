@@ -36,7 +36,7 @@ from Algorithms.ControllerGeneration.AccessMessageMap.GenAccessMessageMap import
 from DataObjects.FlowDataTypes.ClassMessage import Message, BaseMessage
 from DataObjects.ClassMultiDict import MultiDict
 from Debug.Monitor.ClassDebug import Debug
-from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess, Evict
+from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess
 from DataObjects.States.ProxyDirState import ProxyDirState
 
 from Algorithms.ControllerGeneration.ProxyDirController.ClassProxyDirArchitecture import ProxyDirArchitecture
@@ -72,50 +72,18 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
             # Cheap trick, but works
             self.dir_state_req_base_message_access_map = self.cache_state_fwd_message_access_map
             # TODO: FIX THIS: dirty manual logic because write detection from protocol tuples is broken with `CXL.pcc`
-            if arch_level.parser.filename.startswith("CXL2"):
-                store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
-                for state in self.dir_state_req_base_message_access_map:
-                    to_remove = []
-                    for msg in self.dir_state_req_base_message_access_map[state]:
-                        # With `MESI.pcc` in L1, Cmp* message are mis-detected as forwarded requests.
-                        if isinstance(msg, BaseMessage) and msg.id.startswith("Cmp"):
-                            to_remove.append(msg)
-                        # Fix all forwarded requests that are improperly mapped to load access
-                        if isinstance(msg, BaseMessage) and msg.id != "BISnpDataL2":
-                            self.dir_state_req_base_message_access_map[state][msg] = store_access
-                    for msg in to_remove:
-                        self.dir_state_req_base_message_access_map[state].pop(msg)
-            # TODO: FIX THIS: dirty manual translation table
-            elif arch_level.parser.filename.startswith("CXL4") or arch_level.parser.filename.startswith("CXL5"):
-                store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
-                load_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_load]
-                evict_access: Evict = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_evict]
-                self.dir_state_req_base_message_access_map = {}
-                biconflictack: BaseMessage = self.cache.global_arch.network.base_message_dict["BIConflictAckL2"][0]
-                bisnpinv: BaseMessage = self.cache.global_arch.network.base_message_dict["BISnpInvL2"][0]
-                bisnpdata: BaseMessage = self.cache.global_arch.network.base_message_dict["BISnpDataL2"][0]
-                for state in arch_level.cache.stable_states:
-                    if len(state.state) == 2:
-                        if state not in self.dir_state_req_base_message_access_map:
-                            self.dir_state_req_base_message_access_map[state] = {}
-                        if state.state == "II" or state.state == "IS":
-                            continue
-                        self.dir_state_req_base_message_access_map[state][evict_access] = store_access
-                        if state.state.endswith("S"):
-                            self.dir_state_req_base_message_access_map[state][biconflictack] = load_access
-                        elif arch_level.parser.filename.startswith("CXL4") and state.state.endswith("I"):
-                            self.dir_state_req_base_message_access_map[state][biconflictack] = store_access
-                    if len(state.state) == 1:
-                        if state not in self.dir_state_req_base_message_access_map:
-                            self.dir_state_req_base_message_access_map[state] = {}
-                        if state.state == "I":
-                                continue
-                        self.dir_state_req_base_message_access_map[state][evict_access] = store_access
-                        self.dir_state_req_base_message_access_map[state][bisnpdata] = load_access
-                        self.dir_state_req_base_message_access_map[state][bisnpinv] = store_access
-                        if arch_level.parser.filename.startswith("CXL5"):
-                            self.dir_state_req_base_message_access_map[state][biconflictack] = store_access
-
+            store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
+            for state in self.dir_state_req_base_message_access_map:
+                to_remove = []
+                for msg in self.dir_state_req_base_message_access_map[state]:
+                    # With `MESI.pcc` in L1, Cmp* message are mis-detected as forwarded requests.
+                    if isinstance(msg, BaseMessage) and msg.id.startswith("Cmp"):
+                        to_remove.append(msg)
+                    # Fix all forwarded requests that are improperly mapped to load access
+                    if isinstance(msg, BaseMessage) and msg.id != "BISnpDataL2":
+                        self.dir_state_req_base_message_access_map[state][msg] = store_access
+                for msg in to_remove:
+                    self.dir_state_req_base_message_access_map[state].pop(msg)
             # Union gives same result
             #self.dir_state_req_base_message_access_map.update(self.cache_state_fwd_message_access_map)
             # TODO ChangeThis: cleaner solution is to keep all mappings for dir/cache req to access

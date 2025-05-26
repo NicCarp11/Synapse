@@ -28,7 +28,7 @@
 
 import os
 from typing import List
-from graphviz import Digraph
+from graphviz import Digraph, ExecutableNotFound
 from Debug.Monitor.ProtoCCTable import ProtoCCTablePrinter
 
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
@@ -66,8 +66,10 @@ class ProtoCCGraph:
         self._ptransitions(transitions)
         # self.graph.view(header, os.getcwd(), False)
 
-        self.graph.render(header, os.getcwd())
-
+        try:
+            self.graph.render(header, os.getcwd())
+        except ExecutableNotFound:
+            print("graphviz not found")
     def _ptransitions(self, transitions: List[Transition_v2], color='black'):
         for entry in transitions:
             start_state, final_state, access, p_in_msg, p_in_event, p_out_msg, p_out_event, p_cond = \
