@@ -286,7 +286,14 @@ class GenPCCToSLICC(TemplateHandler, Debug):
         elif str(operation) in self.machine_mappings:
             if str(operation) == str(self.arch):
                 return SLICCTokens.k_mach
-            return f"mapAddressToMachine(LineAddress, MachineType:{self.machine_mappings[str(operation)]})"
+            keys = list(self.machine_mappings.keys())
+            idx = keys.index(self.arch.arch_name)
+            if idx < len(keys) - 2:
+                next_key = keys[idx + 1]
+                mt = self.machine_mappings[next_key]
+                return f"createMachineID(MachineType:{mt},intToID({mt}_id))"
+            else:
+                return f"mapAddressToMachine(LineAddress, MachineType:{self.machine_mappings[str(operation)]})"
             #if str(operation) in set(str(level) for level in self.cluster.get_machine_architectures() if level.machine.mach_type == ProtoMachine.k_dir):
             #    # Need to translate directory to use SLICC's directory-mapping function
             #    return "mapAddressToMachine(LineAddress, MachineType:Directory)"

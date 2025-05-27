@@ -33,6 +33,7 @@ import os
 from time import sleep
 
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
 from Backend.SLICC.ModularSLICC.ModularProxy import ModularProxy
 from DataObjects.ClassCluster import Cluster
 from Debug.Monitor.MakeDir import make_dir
@@ -55,16 +56,15 @@ def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
     file_name = "SLICC_TEST"
 
     directories = cluster.get_machine_architectures_by_type(ProtoMachine.k_dir)
-    proxies = [cache for cache in directories if isinstance(cache, HHDirArchitecture)]
-    directory, = [dir for dir in directories if not isinstance(dir, HHDirArchitecture)]
+    proxies = [cache for cache in directories if (isinstance(cache, HHDirArchitecture) or isinstance(cache, HHDirArchitecture_L2private))]
+    directory, = [dir for dir in directories if not isinstance(dir, HHDirArchitecture) and not isinstance(dir, HHDirArchitecture_L2private)]
     caches = cluster.get_machine_architectures_by_type(ProtoMachine.k_cache)
 
-    machine_ids = {
-        str(directory): "Directory"
-    }
-    for idx, cntrl in enumerate([*sorted(proxies, key=str), *sorted(caches, key=str)]):
+    machine_ids = {}
+    for idx, cntrl in enumerate([*sorted(caches, key=str), *sorted(proxies, key=str)], start=1):
         machine_ids[str(cntrl)] = f"L{idx}Cache"
 
+    machine_ids[str(directory)] = "Directory"
     ModularDir(cluster, directory, file_name, machine_ids)
 
     for idx, proxy in enumerate(sorted(proxies, key=str)):

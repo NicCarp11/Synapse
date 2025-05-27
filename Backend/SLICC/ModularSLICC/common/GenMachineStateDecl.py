@@ -32,6 +32,7 @@ from networkx import union
 
 from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture

@@ -37,11 +37,10 @@ from Backend.SLICC.ModularSLICC.common.GenMachineHeader import GenMachineHeader
 class GenCacheHeader(TemplateHandler):
 
     template_file = "cache_header.sm"
-
     def __init__(self, handler_dir: str):
         TemplateHandler.__init__(self, handler_dir)
 
-    def gen_cache_header_str(self, arch: BaseArchitecture):
+    def gen_cache_header_str(self, arch: FlatArchitecture, id_mapping: dict[str, str]):
         const_str = "//" + __name__ + self.nl
-        const_str += GenMachineHeader.gen_machine_header_str(self, arch, GenCacheHeader.template_file, False)
+        const_str += GenMachineHeader.gen_machine_header_str(self, arch, id_mapping, GenCacheHeader.template_file, False)
         return const_str + self.nl

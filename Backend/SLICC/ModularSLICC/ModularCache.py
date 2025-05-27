@@ -47,7 +47,7 @@ class ModularCache(GenCacheBase):
 
         with open(file_name, "w") as slicc_file:
             # Write header
-            slicc_file.write(self.gen_cache_header_str(arch))
+            slicc_file.write(self.gen_cache_header_str(arch, id_mapping))
             # Write (indented) body
             slicc_file.write(
                 self.add_tabs(

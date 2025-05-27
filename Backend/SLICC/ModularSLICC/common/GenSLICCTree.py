@@ -38,6 +38,7 @@ from Parser.CopyReducedCommonTree import copy_tree
 from Algorithms.ControllerGeneration.CompoundBaseController.CompoundDirCacheArchitecture import \
     CompoundDirCacheArchitecture
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenPCCToSLICC import GenPCCToSLICC
@@ -114,7 +115,7 @@ class GenSLICCTree(TemplateHandler, Debug):
             cur_node = guard
 
             refresh_mru = False
-            if isinstance(self.arch, HHDirArchitecture):
+            if isinstance(self.arch, HHDirArchitecture) or isinstance(self.arch, HHDirArchitecture_L2private):
                 assert isinstance(transition.start_state, CompoundState)
                 state_map = None
                 invalid = False

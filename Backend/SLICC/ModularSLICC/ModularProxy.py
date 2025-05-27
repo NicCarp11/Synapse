@@ -17,9 +17,10 @@ class ModularProxy(GenProxyBase):
 
         machine_id = id_mapping[str(arch)]
 
+
         with open(file_name, "w") as slicc_file:
             # Write header
-            slicc_file.write(self.gen_proxy_header_str(arch, machine_id))
+            slicc_file.write(self.gen_proxy_header_str(arch, id_mapping))
             # Write (indented) body
             slicc_file.write(
                 self.fix_tabs(

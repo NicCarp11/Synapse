@@ -6,6 +6,7 @@ from Algorithms.ControllerGeneration.CompoundBaseController.CompoundDirArchitect
 from Algorithms.ControllerGeneration.CompoundBaseController.CompoundDirCacheArchitecture import \
     CompoundDirCacheArchitecture
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenMachineInPorts import GenMachineInPorts
@@ -32,7 +33,7 @@ class GenProxyInPorts(TemplateHandler):
             out_ports: 'OrderedDict[str, str]',
             machine_mappings: dict[str, str],
     ) -> str:
-        assert isinstance(arch, HHDirArchitecture)
+        assert isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private)
         alloc_states = self._find_alloc_msgs(arch)
         port_map = Util.get_msg_port_mapping(cluster)
         alloc_ports = dict()

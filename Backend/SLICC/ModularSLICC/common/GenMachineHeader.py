@@ -36,9 +36,14 @@ from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 class GenMachineHeader:
 
     @staticmethod
-    def gen_machine_header_str(temp_h: TemplateHandler, arch: BaseArchitecture,
-                               template_file: str, flip_direction: bool) -> str:
+    def gen_machine_header_str(temp_h: TemplateHandler, arch: FlatArchitecture, id_mapping: dict[str, str], template_file: str, flip_direction: bool) -> str:
         nets = []
+        list(id_mapping.keys()).index(arch.arch_name)
+        keys = list(id_mapping.keys())
+        index = keys.index(arch.arch_name)
+        machine_id = id_mapping[keys[index]]
+        if index < len(keys) - 1:
+            next_machine_id = id_mapping[keys[index + 1]]
         net_node = arch.global_arch.network.network_node
         definitions = net_node.getChildren()
         # Will have to worry about the ordering constraints when setting up the config file, not now
@@ -59,4 +64,8 @@ class GenMachineHeader:
                             )
 
         nets_str = (temp_h.nl + temp_h.tab).join(nets)
-        return temp_h.string_repl_keys(temp_h.open_template(template_file), [nets_str])
+        if index < len(keys) - 2:
+            return temp_h.string_repl_keys(temp_h.open_template(template_file), [machine_id, next_machine_id, nets_str])
+        else:
+            return temp_h.string_repl_keys(temp_h.open_template(template_file), [machine_id, nets_str])
+

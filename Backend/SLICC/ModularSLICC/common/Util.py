@@ -33,6 +33,7 @@ from typing import Set, Dict, Tuple, List
 
 from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from DataObjects.Architecture.ArchitectureClassification import ArchitectureClassification
@@ -62,7 +63,7 @@ def get_arch_access_perms(arch: FlatArchitecture, state: State_v2, default: str 
         return set(str(a) for a in t)
 
 def get_invalid_states(arch: FlatArchitecture) -> Set[State_v2]:
-    if isinstance(arch, HHDirArchitecture):
+    if isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private):
         for i, c in enumerate(arch.arch_tuple):
             if c.machine.mach_type == ProtoMachine.k_cache:
                 cs = get_invalid_states(c)
@@ -289,7 +290,7 @@ def reverse_direction(direction: str) -> str:
 def get_entry_variable(arch: BaseArchitecture, var_name: str, var_str: str) -> str:
     # Variable is stored in the cache entry if we are a dir or if it is the cache line.
     # Otherwise, it should be kept in the TBE/MSHR.
-    if not cache or var_name == get_active_cache_line(arch) or isinstance(arch, HHDirArchitecture):
+    if not cache or var_name == get_active_cache_line(arch) or isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private):
         return f"getEntry(LineAddress).{var_str}"
     else:
         # accessing the tbe requires it to be valid, of course

@@ -92,7 +92,8 @@ class RunHH(Debug):
 
         # Bridge Generation
         hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
-
+        ProtoCCTablePrinter().ptransitiontable(list(level_1_1.directory.get_architecture_transitions()))
+        Debug.psection(f"Directory")
         # L2 private for L1
         l2_private_dir_1 = HHDirArchitecture_L2private(level_1_2_1, level_1_2_2, access_map_table, False)
 
@@ -111,6 +112,7 @@ class RunHH(Debug):
         #ProtoNetworkxBase(level_2)
 
         level_1_2_1.directory.global_arch = level_1_1.directory.global_arch
+        level_1_2_1.directory.arch_name = "bridge_private"
         Debug.psection(f"Cache controller L1_2 private")
         ProtoCCTablePrinter().ptransitiontable(list(level_1_2_1.directory.get_architecture_transitions()))
         cache_machine_1 = Machine(level_1_1.cache)
