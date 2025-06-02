@@ -98,9 +98,12 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             if not assignments:
                 return None
             for assignment in assignments.splitlines():
-                l, r = assignment.strip()[:-1].split(":=")
-                if l.strip() == r.strip():
-                    return None
+                if ":=" in assignment:
+                    l, r = assignment.strip()[:-1].split(":=")
+                    if l.strip() == r.strip():
+                        return None
+                else:
+                    continue
             return assignments
 
         elif op == ProtoParserBase.k_setfunc:
@@ -192,7 +195,17 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                 result += Util.get_entry_variable(self.arch, self.cache, var_name, f"{var_name}_{m} := {right_side}.{SLICCTokens.field_map.get(m, m)}" + self.end)
             return result
         elif var_name in self.arch.machine.variables:
-            return Util.get_entry_variable(self.arch, var_name, self._exist_var_assignment(var_name, operation))
+            # return Util.get_entry_variable(self.arch, self.cache, var_name,
+            #                                self._exist_var_assignment(var_name, operation))
+            if (self.arch.machine.mach_id == "cache"):
+                if var_name == Util.get_active_cache_line(self.arch):
+                    return Util.get_entry_variable(self.arch, self.cache, var_name, 'cl_in_msg')
+                else:
+                    return Util.get_entry_variable(self.arch, self.cache, var_name,
+                                                   self._exist_var_assignment(var_name, operation))
+                    # return Util.get_entry_variable(self.arch, self.cache, var_name, self._exist_var_assignment(var_name, operation))
+            else:
+                return Util.get_entry_variable(self.arch, self.cache, var_name, self._exist_var_assignment(var_name, operation))
         elif var_name in self.local_variables:
             # Variable is local (in the scope)
             return self._exist_var_assignment(var_name, operation)

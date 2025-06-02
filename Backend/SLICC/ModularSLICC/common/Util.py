@@ -308,7 +308,17 @@ def get_entry_variable(arch: BaseArchitecture, var_name: str, var_str: str) -> s
     # Variable is stored in the cache entry if we are a dir or if it is the cache line.
     # Otherwise, it should be kept in the TBE/MSHR.
     if not cache or var_name == get_active_cache_line(arch) or isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private):
-        return f"getEntry(LineAddress).{var_str}"
+        if arch.machine.mach_id == "cache":
+            if var_str == "cl" :
+                return f"getCacheBlock(tbe, getEntry(LineAddress), LineAddress)"
+            elif var_str == "cl_in_msg" :
+                # return f"getEntry(LineAddress).{var_str}"
+                # return f"getCacheBlock(tbe, getEntry(LineAddress), LineAddress)"
+                return f"setCacheBlock(tbe, getEntry(LineAddress), LineAddress, in_msg.cl);"
+            else:
+                return f"getCacheBlock(tbe, getEntry(LineAddress), LineAddress)"
+        else:
+            return f"getEntry(LineAddress).{var_str}"
     else:
         # accessing the tbe requires it to be valid, of course
         return f"tbe.{var_str}"

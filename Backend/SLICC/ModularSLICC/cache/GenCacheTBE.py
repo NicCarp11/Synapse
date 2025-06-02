@@ -53,13 +53,13 @@ class GenCacheTBE(TemplateHandler,):
         body_strs = []
         for var_name, variable in arch.machine.variables.items():
             # For caches, put everything except the actual cache line in the TBE
-            if var_name != Util.get_active_cache_line(arch):
-                method_fct = SLICCTokens.data_type_map.get(variable.getText(), '_pass_node')
-                method = getattr(GenMachineStruct, method_fct)
-                res = method(variable, arch)
-                if res:
-                    body_strs.append(self.tab + res)
+            method_fct = SLICCTokens.data_type_map.get(variable.getText(), '_pass_node')
+            method = getattr(GenMachineStruct, method_fct)
+            res = method(variable, arch)
+            if res:
+                body_strs.append(self.tab + res)
         const_str += self.string_repl_keys(self.open_template(GenCacheTBE.template_file),
-                                           ["L1Cache", self.nl.join(body_strs)])
+                                          [machine_id, self.nl.join(body_strs)])
+
         return const_str + self.nl
 

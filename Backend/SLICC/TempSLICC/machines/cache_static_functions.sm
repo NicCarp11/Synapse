@@ -12,6 +12,26 @@ Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
   return static_cast(Entry, "pointer", cache.lookup(LineAddress));
 }
 
+ DataBlock getCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress) {
+    if (is_valid(tbe) && tbe.dirty) {
+        return tbe.cl;
+    } else if (is_valid(cache_entry)) {
+        return cache_entry.cl;
+    } else {
+        error("block not present");
+    }
+  }
+
+  void setCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress, DataBlock cl) {
+    if (is_valid(tbe) && tbe.dirty) {
+        tbe.cl := cl;
+    } else if (is_valid(cache_entry)) {
+        cache_entry.cl := cl;
+    } else {
+        error("block not present");
+    }
+  }
+
 State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
   if (is_valid(tbe)) {
     return tbe.TBEState;
@@ -54,10 +74,32 @@ void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
   }
 }
 
-void functionalRead(Addr addr, Packet *pkt) {
-  testAndRead(addr, getEntry(addr).$1$, pkt);
-}
+  void functionalRead(Addr addr, Packet *pkt) {
+    TBE tbe := TBEs[addr];
+    Entry cache_entry := getEntry(addr);
+    if (is_valid(cache_entry)) {
+      testAndRead(addr, cache_entry.cl, pkt);
+    } else if(is_valid(tbe) && tbe.dirty) {
+      testAndRead(addr, tbe.cl, pkt);
+    } else {
+      error("Block not present!");
+    }
+  }
 
-int functionalWrite(Addr addr, Packet *pkt) {
-  return 0 + testAndWrite(addr, getEntry(addr).$1$, pkt);
-}
+  int functionalWrite(Addr addr, Packet *pkt) {
+    int num_functional_writes := 0;
+
+    Entry cache_entry := getEntry(addr);
+    if (is_valid(cache_entry)) {
+      num_functional_writes := num_functional_writes +
+        testAndWrite(addr, cache_entry.cl, pkt);
+      return num_functional_writes;
+    }
+
+    TBE tbe := TBEs[addr];
+    if(is_valid(tbe) && tbe.dirty) {
+      num_functional_writes := num_functional_writes +
+      testAndWrite(addr, tbe.cl, pkt);
+    }
+    return num_functional_writes;
+  }
