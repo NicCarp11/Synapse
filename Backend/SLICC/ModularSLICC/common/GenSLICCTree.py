@@ -235,9 +235,15 @@ class GenSLICCTree(TemplateHandler, Debug):
                 trigger_node = UniqueNode((transition, transition.start_state, transition.final_state))
                 operation_tree.add_node(trigger_node, op_str=trigger_str)
                 operation_tree.add_edge(cur_node, trigger_node)
-            elif self.arch.machine.check_cache() and transition.final_state in Util.get_invalid_states(self.arch):
-                trigger_str = f"trigger(Event:dealloc{self.port_name}, LineAddress, getEntry(LineAddress), " \
+            elif self.cache and transition.final_state in Util.get_invalid_states(self.arch):
+                eviction_state = Util.get_evict_trans_states(self.arch)
+                if transition.start_state not in eviction_state:
+                    trigger_str = f"trigger(Event:dealloc{self.port_name}, LineAddress, getEntry(LineAddress), " \
                               f"tbe){self.end}"
+                else:
+                    trigger_str = f"tbe.dirty := false;\n" + \
+                        f"{self.port_name}.dequeue(clockEdge());\n" + \
+                        f"trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);\n"
                 trigger_node = UniqueNode((transition, transition.start_state, transition.final_state, trigger_str))
                 operation_tree.add_node(trigger_node, op_str=trigger_str)
                 operation_tree.add_edge(cur_node, trigger_node)
