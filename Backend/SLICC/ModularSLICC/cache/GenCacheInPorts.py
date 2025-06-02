@@ -144,17 +144,22 @@ class GenCacheInPorts(TemplateHandler):
                 _, event_name = hit_event_map[(access_type, state_name)]
                 op_str += f"{self.nl}trigger(Event:{event_name}, LineAddress, getEntry(LineAddress), " \
                           f"tbe){self.end}"
+                op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
             elif access_type == "evict":
                 op_str += f"{self.nl}{self.open_template('forward_eviction.sm')}"
+                op_str += f"{self.nl}{Util.gen_silent_evict(self)}"
 
-            if access_type != "evict" and not is_hit and state_name not in invalid_states:
+
+            elif access_type != "evict" and not is_hit and state_name not in invalid_states:
                 # If the access was a load or a store we should now pop the queue to indicate we've handled it,
                 # EXCEPT if we needed to allocate a cache entry or perform a local hit callback,
                 # in which case the triggered transition should pop the queue instead.
                 op_str += f"{self.nl}{GenPCCToSLICC.gen_pop_net(self, 'mandatory_in')}"
+                op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
 
-            # Also add a dummy event to gen_make sure the simulation makes progress
-            op_str += f"{self.nl}{Util.gen_progress_str(self, arch)}"
+            else:
+                # Also add a dummy event to make sure the simulation makes progress
+                op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
 
             op_str = self.add_tabs(op_str, 1)
 

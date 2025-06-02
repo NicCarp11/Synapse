@@ -62,6 +62,7 @@ class GenCacheEvents(TemplateHandler):
                               )
 
         event_strs.append(GenMachineEvents.gen_tbe_alloc_event(self))
+        event_strs.append(GenMachineEvents.silent_evict_event(self))
         event_strs.append(GenMachineEvents.gen_tbe_dealloc_event(self))
         event_strs.append(GenMachineEvents.gen_progress_event(self))
 

@@ -49,7 +49,8 @@ class GenCacheTransitions(TemplateHandler):
         invalid_states_str = f"{{{', '.join(invalid_states)}}}"
         all_states = {str(state) for state in arch.get_architecture_states_verified()}
         all_states_str = f"{{{', '.join(all_states)}}}"
-
+        evict_transition_state = sorted({str(state) for state in Util.get_evict_trans_states(arch)})
+        evict_transition_states_str = f"{{{', '.join(evict_transition_state)}}}"
         dealloc_trans_strs = []
         stall_strs = [GenMachineTransitions.gen_stall_transition(self, all_states, "mandatory_in")]
         for port_name in sorted(in_ports.values()):
@@ -104,10 +105,12 @@ class GenCacheTransitions(TemplateHandler):
                + alloc_trans_str + (self.nl * 2) \
                + local_hit_trans_str + (self.nl * 2) \
                + remote_hit_trans_str + (self.nl * 2) \
-               + stall_str + (self.nl * 2) \
+            + self.string_repl_keys(self.open_template("transition_silent_evict.sm"), [evict_transition_states_str]) \
+            + (self.nl * 2) \
+            + stall_str + (self.nl * 2) \
                + self.string_repl_keys(self.open_template("transition_alloc_tbe.sm"), [all_states_str]) \
                + (self.nl * 2) \
-               + self.string_repl_keys(self.open_template("transition_dealloc_tbe.sm"), [all_states_str]) \
+            + self.string_repl_keys(self.open_template("transition_dealloc_tbe.sm"), [all_states_str]) \
                + (self.nl * 2)  \
                + GenMachineTransitions.gen_progress_transition(
                     self, map(str, arch.get_architecture_states_verified())) + self.nl

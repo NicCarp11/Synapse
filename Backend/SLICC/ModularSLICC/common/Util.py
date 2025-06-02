@@ -78,7 +78,20 @@ def get_invalid_states(arch: FlatArchitecture) -> Set[State_v2]:
     return invalid_states
 
 
-def get_states_following_invalid_states(arch: BaseArchitecture) -> Set[State_v2]:
+def get_evict_trans_states(arch: FlatArchitecture) -> Set[State_v2]:
+    evict_states = set()
+    for state in arch.get_architecture_states_verified():
+        accesses = get_arch_access_perms(arch, state)
+        if not state.stable and state.start_state_set:
+            stable_state = state.start_state_set[0].stable_state
+            accesses_stable_state = get_arch_access_perms(arch, stable_state)
+            if len(accesses_stable_state) > 0 and state.end_state_set:
+                if state.end_state_set[0].stable_state.state == "I":
+                    evict_states.add(state)
+
+    return evict_states
+
+def get_states_following_invalid_states(arch: FlatArchitecture) -> Set[State_v2]:
     invalid_states = get_invalid_states(arch)
     next_states = set()
     for state in invalid_states:
@@ -232,6 +245,10 @@ def gen_stall_str(temp_h: TemplateHandler, arch: BaseArchitecture, port: str) ->
     else:
         assert arch.machine.check_dir()
         return f"trigger(Event:Stall{port}, LineAddress, tbe){temp_h.sem}"
+
+def gen_silent_evict(temp_h: TemplateHandler) -> str:
+    return f"trigger(Event:deallocevict, LineAddress, getEntry(LineAddress), tbe){temp_h.sem}"
+
 
 def gen_recycle_str(temp_h: TemplateHandler, cache: bool, port: str) -> str:
     return f'DPRINTF(RubySlicc, "recycling %s on {port} (addr: %#x)\\\\n", st, LineAddress);{temp_h.nl}' \

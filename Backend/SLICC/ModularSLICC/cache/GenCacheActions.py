@@ -101,6 +101,7 @@ class GenCacheActions(TemplateHandler):
                + self.open_template("action_dealloc_entry.sm") + self.nl \
                + self.open_template("action_alloc_tbe.sm") + self.nl \
                + self.open_template("action_dealloc_tbe.sm") + self.nl \
+               + self.open_template("action_copy_entryTBE.sm") + self.nl \
                + self.string_repl_keys(self.open_template("action_cache_local_load_hit.sm"), [active_cache_line]) + self.nl \
                + self.string_repl_keys(self.open_template("action_cache_local_store_hit.sm"), [active_cache_line]) + self.nl \
                + self.string_repl_keys(self.open_template("action_cache_remote_load_hit.sm"), [active_cache_line]) + self.nl \

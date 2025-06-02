@@ -74,3 +74,7 @@ class GenMachineEvents:
     @staticmethod
     def gen_tbe_dealloc_event(temp_h: TemplateHandler) -> str:
         return f"deallocTBE, desc=\"Deallocate a TBE.\"{temp_h.end}"
+
+    @staticmethod
+    def silent_evict_event(temp_h: TemplateHandler) -> str:
+        return f"deallocevict, desc=\"Deallocate cache block before completion ack for eviction request.\"{temp_h.end}"
