@@ -68,7 +68,7 @@ class GenMachineStateDecl:
         # This will break down when cache and dir states do not match exactly, like with MESI.
         # So, TODO actually model the mem controller's permissions
 
-        if isinstance(arch, HHDirArchitecture):
+        if isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private):
             assert isinstance(state, CompoundState)
             perms = Util.get_compound_perms(arch, state, GenMachineStateDecl.k_busy)
             c, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_cache]
@@ -92,11 +92,30 @@ class GenMachineStateDecl:
             if GenMachineStateDecl.k_busy in accesses:
                 return "Busy"
         else:
-            if GenMachineStateDecl.k_busy in accesses:
-                return "Busy"
-            elif BaseAccess.k_store in accesses:
-                return "Read_Write"
-            elif BaseAccess.k_load in accesses:
-                return "Read_Only"
+            if state.stable:
+                if GenMachineStateDecl.k_busy in accesses:
+                    return "Busy"
+                elif BaseAccess.k_store in accesses:
+                    return "Read_Write"
+                elif BaseAccess.k_load in accesses:
+                    return "Read_Only"
+                else:
+                    return "Invalid"
+            elif state.start_state_set:
+                stable_state = state.start_state_set[0].stable_state
+                accesses_stable_state = Util.get_arch_access_perms(arch, stable_state, GenMachineStateDecl.k_busy)
+                if len(accesses_stable_state) == 0:
+                    return "Invalid"
+                else:
+                    return "Read_Only"
             else:
-                return "Invalid"
+                stable_state = state.end_state_set[0].stable_state
+                accesses_stable_state = Util.get_arch_access_perms(arch, stable_state, GenMachineStateDecl.k_busy)
+                if len(accesses_stable_state) == 0:
+                    return "Invalid"
+                else:
+                    return "Read_Only"
+
+
+
+

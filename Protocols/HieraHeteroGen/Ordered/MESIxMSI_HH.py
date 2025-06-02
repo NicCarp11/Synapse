@@ -53,7 +53,7 @@ class MESIxMSI_HH(RunHH, Debug):
         self.run_protocol_tests()
 
     def run_protocol_tests(self):
-        has_l2_private = True
+        has_l2_private = False
         path = OrderedReplyForwardingProtocols().get_cur_protocol_path()
         protocol_1_name: str = "MESI_unord.pcc"
         protocol_2_name: str = "MESI_unord.pcc"
