@@ -53,12 +53,13 @@ class MESIxMSI_HH(RunHH, Debug):
         self.run_protocol_tests()
 
     def run_protocol_tests(self):
+        has_l2_private = True
         path = OrderedReplyForwardingProtocols().get_cur_protocol_path()
         protocol_1_name: str = "MESI_unord.pcc"
         protocol_2_name: str = "MESI_unord.pcc"
         self.run_test(protocol_1_name, protocol_2_name, path,
                       [self.translation_table_first, self.translation_table_second],
-                      self.sc_litmus_test_gen.litmus_test_list, self.rc_litmus_test_gen.litmus_test_list)
+                      self.sc_litmus_test_gen.litmus_test_list, self.rc_litmus_test_gen.litmus_test_list, has_l2_private)
         self.psuccess(f"HieraHeteroGen {protocol_1_name.split('.')[0]} x {protocol_2_name.split('.')[0]} execution complete")
 
     @staticmethod
