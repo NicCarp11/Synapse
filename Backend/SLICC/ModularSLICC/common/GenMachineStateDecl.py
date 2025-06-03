@@ -29,6 +29,7 @@
 #
 #
 from networkx import union
+from typing import Dict
 
 from Algorithms.HeteroGen.ArchTupleStateOrdering import ArchTupleStateOrdering
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
@@ -44,6 +45,8 @@ from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 
 
 class GenMachineStateDecl:
+    k_busy = "busy"
+    _state_2_permission_cache: Dict[str, str] = {}
 
     @staticmethod
     def gen_machine_state_decl_body_str(temp_h: TemplateHandler, arch: BaseArchitecture) -> str:
@@ -61,29 +64,45 @@ class GenMachineStateDecl:
         return temp_h.nl.join(state_declarations)
 
     @staticmethod
-    def _get_access_permission(arch: BaseArchitecture, state: State_v2) -> str:
+    def _get_access_permission(arch: FlatArchitecture, cache: bool, state: State_v2) -> str:
+        state_to_permission = GenMachineStateDecl._state_2_permission_cache
         # As far as I know, ProtoGen does not know what permission the directory has in a certain state
         # as it does not model requests coming from the memory controller.
         # For now, using this hacky way to find it.
         # This will break down when cache and dir states do not match exactly, like with MESI.
         # So, TODO actually model the mem controller's permissions
-
         if isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private):
             assert isinstance(state, CompoundState)
-            perms = Util.get_compound_perms(arch, state, GenMachineStateDecl.k_busy)
-            c, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_cache]
-            d, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_dir]
+            first_state, second_state = state.base_states
+            if (first_state.stable and second_state.stable) or not (first_state.state in state_to_permission) or not (second_state.state in state_to_permission):
+                perms = Util.get_compound_perms(arch, state, GenMachineStateDecl.k_busy)
+                c, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_cache]
+                d, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_dir]
 
-            if GenMachineStateDecl.k_busy in c or GenMachineStateDecl.k_busy in d:
-                return "Busy"
-            elif BaseAccess.k_store in c and not BaseAccess.k_load in d:
-                return "Read_Write"
-            elif BaseAccess.k_load in c and not BaseAccess.k_store in d:
-                return "Read_Only"
-            elif len(c) == 0:
-                return "Invalid"
+                if GenMachineStateDecl.k_busy in c or GenMachineStateDecl.k_busy in d:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Busy"
+                    return "Busy"
+                elif BaseAccess.k_store in c and not BaseAccess.k_load in d:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Write"
+                    return "Read_Write"
+                elif BaseAccess.k_load in c and not BaseAccess.k_store in d:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Only"
+                    return "Read_Only"
+                elif len(c) == 0:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Invalid"
+                    return "Invalid"
+                else:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Maybe_Stale"
+                    return "Maybe_Stale"
             else:
-                return "Maybe_Stale"
+                if state_to_permission[first_state.state] == "Invalid" and state_to_permission[second_state.state] == "Invalid":
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Invalid"
+                    return "Invalid"
+                else:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Only"
+                    return "Read_Only"
+
+
 
         accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
 
@@ -94,27 +113,115 @@ class GenMachineStateDecl:
         else:
             if state.stable:
                 if GenMachineStateDecl.k_busy in accesses:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Busy"
                     return "Busy"
                 elif BaseAccess.k_store in accesses:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Write"
                     return "Read_Write"
                 elif BaseAccess.k_load in accesses:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Only"
                     return "Read_Only"
                 else:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Invalid"
                     return "Invalid"
             elif state.start_state_set:
                 stable_state = state.start_state_set[0].stable_state
                 accesses_stable_state = Util.get_arch_access_perms(arch, stable_state, GenMachineStateDecl.k_busy)
                 if len(accesses_stable_state) == 0:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Invalid"
                     return "Invalid"
                 else:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Only"
                     return "Read_Only"
             else:
                 stable_state = state.end_state_set[0].stable_state
                 accesses_stable_state = Util.get_arch_access_perms(arch, stable_state, GenMachineStateDecl.k_busy)
                 if len(accesses_stable_state) == 0:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Invalid"
                     return "Invalid"
                 else:
+                    GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Write"
                     return "Read_Only"
+
+
+    # def _get_access_permission(arch: FlatArchitecture, cache: bool, state: State_v2) -> str:
+    #     # As far as I know, ProtoGen does not know what permission the directory has in a certain state
+    #     # as it does not model requests coming from the memory controller.
+    #     # For now, using this hacky way to find it.
+    #     # This will break down when cache and dir states do not match exactly, like with MESI.
+    #     # So, TODO actually model the mem controller's permissions
+    #     state_2_permission: Dict[State_v2, str] = {}
+    #     if isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private):
+    #         assert isinstance(state, CompoundState)
+    #         first_state, second_state = state.base_states
+    #         if (first_state.stable and second_state.stable):
+    #             perms = Util.get_compound_perms(arch, state, GenMachineStateDecl.k_busy)
+    #             c, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_cache]
+    #             d, = [p for a, p in perms if a.machine.mach_type == ProtoMachine.k_dir]
+    #
+    #             if GenMachineStateDecl.k_busy in c or GenMachineStateDecl.k_busy in d:
+    #                 return "Busy"
+    #             elif BaseAccess.k_store in c and not BaseAccess.k_load in d:
+    #                 return "Read_Write"
+    #             elif BaseAccess.k_load in c and not BaseAccess.k_store in d:
+    #                 return "Read_Only"
+    #             elif len(c) == 0:
+    #                 return "Invalid"
+    #             else:
+    #                 return "Maybe_Stale"
+    #         else:
+    #             return state_2_permission[second_state]
+    #
+    #     accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
+    #
+    #     # This definitely needs to evolve in the future...
+    #     if not cache:
+    #         if GenMachineStateDecl.k_busy in accesses:
+    #             state_2_permission[state] = "Busy"
+    #             return "Busy"
+    #         elif BaseAccess.k_store in accesses:
+    #             state_2_permission[state] = "Maybe_Stale"
+    #             return "Maybe_Stale"
+    #         elif BaseAccess.k_load in accesses:
+    #             state_2_permission[state] = "Read_Only"
+    #             return "Read_Only"
+    #         else:
+    #             assert state.stable
+    #             state_2_permission[state] = "Read_Write"
+    #             return "Read_Write"
+    #     else:
+    #         if state.stable:
+    #             if GenMachineStateDecl.k_busy in accesses:
+    #                 state_2_permission[state] = "Busy"
+    #                 return "Busy"
+    #             elif BaseAccess.k_store in accesses:
+    #                 state_2_permission[state] = "Read_Write"
+    #                 return "Read_Write"
+    #             elif BaseAccess.k_load in accesses:
+    #                 state_2_permission[state] = "Read_Only"
+    #                 return "Read_Only"
+    #             else:
+    #                 state_2_permission[state] = "Invalid"
+    #                 return "Invalid"
+    #         elif state.start_state_set:
+    #             stable_state = state.start_state_set[0].stable_state
+    #             accesses_stable_state = Util.get_arch_access_perms(arch, stable_state, GenMachineStateDecl.k_busy)
+    #             if len(accesses_stable_state) == 0:
+    #                 state_2_permission[state] = "Invalid"
+    #                 return "Invalid"
+    #             else:
+    #                 state_2_permission[state] = "Read_Only"
+    #                 return "Read_Only"
+    #         else:
+    #             stable_state = state.end_state_set[0].stable_state
+    #             accesses_stable_state = Util.get_arch_access_perms(arch, stable_state, GenMachineStateDecl.k_busy)
+    #             if len(accesses_stable_state) == 0:
+    #                 state_2_permission[state] = "Invalid"
+    #                 return "Invalid"
+    #             else:
+    #                 state_2_permission[state] = "Read_Write"
+    #                 return "Read_Only"
+
 
 
 
