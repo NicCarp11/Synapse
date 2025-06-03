@@ -32,9 +32,8 @@
 from typing import Dict
 from collections import OrderedDict
 
-from DataObjects.ClassCluster import Cluster
-from DataObjects.ClassMultiDict import MultiDict
-from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
+from numpy.core.numeric import True_
+
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common.GenMachineInPorts import GenMachineInPorts
 from Backend.SLICC.ModularSLICC.common import Util
@@ -147,7 +146,12 @@ class GenCacheInPorts(TemplateHandler):
                 op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
             elif access_type == "evict":
                 op_str += f"{self.nl}{self.open_template('forward_eviction.sm')}"
-                op_str += f"{self.nl}{Util.gen_silent_evict(self)}"
+                evict_states = Util.get_evict_trans_states(arch)
+                if transitions[0].final_state in evict_states:
+                    op_str += f"{self.nl}{Util.gen_silent_evict(self)}"
+                else:
+                    op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
+
 
 
             elif access_type != "evict" and not is_hit and state_name not in invalid_states:

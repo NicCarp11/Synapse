@@ -91,6 +91,18 @@ def get_evict_trans_states(arch: FlatArchitecture) -> Set[State_v2]:
 
     return evict_states
 
+def get_evict_trans_states_all(arch: FlatArchitecture) -> Set[State_v2]:
+    evict_states = set()
+    for state in arch.get_architecture_states_verified():
+        accesses = get_arch_access_perms(arch, state)
+        if not state.stable and state.start_state_set:
+            stable_state = state.start_state_set[0].stable_state
+            if state.end_state_set:
+                if state.end_state_set[0].stable_state.state == "I":
+                    evict_states.add(state)
+
+    return evict_states
+
 def get_states_following_invalid_states(arch: FlatArchitecture) -> Set[State_v2]:
     invalid_states = get_invalid_states(arch)
     next_states = set()
@@ -317,6 +329,19 @@ def get_entry_variable(arch: BaseArchitecture, var_name: str, var_str: str) -> s
                 return f"setCacheBlock(tbe, getEntry(LineAddress), LineAddress, in_msg.cl);"
             else:
                 return f"getCacheBlock(tbe, getEntry(LineAddress), LineAddress)"
+        elif arch.machine.mach_id != "cache" and (isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private)):
+            if var_str == "cl" :
+                return f"getCacheBlock(tbe, getEntry(LineAddress), LineAddress)"
+            elif "owner" in var_name or "cache" in var_name or "proxy" in var_name:
+                return f"getEntry(LineAddress).{var_str}"
+            elif "getCacheBlock(tbe, getEntry(LineAddress), LineAddress)" in var_str:
+                return f"//getEntry(LineAddress).{var_str}"
+            elif "in_msg" in var_str :
+                # return f"getEntry(LineAddress).{var_str}"
+                # return f"getCacheBlock(tbe, getEntry(LineAddress), LineAddress)"
+                return f"setCacheBlock(tbe, getEntry(LineAddress), LineAddress, in_msg.cl);"
+            else:
+                return f"tbe.{var_str}"
         else:
             return f"getEntry(LineAddress).{var_str}"
     else:

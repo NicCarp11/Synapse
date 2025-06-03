@@ -236,7 +236,7 @@ class GenSLICCTree(TemplateHandler, Debug):
                 operation_tree.add_node(trigger_node, op_str=trigger_str)
                 operation_tree.add_edge(cur_node, trigger_node)
             elif self.cache and transition.final_state in Util.get_invalid_states(self.arch):
-                eviction_state = Util.get_evict_trans_states(self.arch)
+                eviction_state = Util.get_evict_trans_states_all(self.arch)
                 if transition.start_state not in eviction_state:
                     trigger_str = f"trigger(Event:dealloc{self.port_name}, LineAddress, getEntry(LineAddress), " \
                               f"tbe){self.end}"
