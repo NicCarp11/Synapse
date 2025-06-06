@@ -30,6 +30,7 @@ from typing import Union, Dict, List, Set, Tuple
 from itertools import product
 import os
 import random
+import sys
 import time
 
 from Parser.NetworkxParser.ClassProtoParser import ProtoParser
@@ -67,57 +68,88 @@ class RunHH(Debug):
                  access_map_table: List[Dict[str, List[str]]],
                  litmus_test_list_1: Union[LitmusTest, List[LitmusTest], None] = None,
                  litmus_test_list_2: Union[LitmusTest, List[LitmusTest], None] = None,
-                 has_l2_private : bool = False):
+                 has_one_level : bool = False,
+                 has_two_level: bool = False,
+                 has_three_level: bool = False):
         os.chdir(protocol_dir_path)
         protocol_1 = open(filename_1).read()
         protocol_2 = open(filename_2).read()
         self.sys_name = filename_1.split(".")[0] + "_" + filename_2.split(".")[0]
         make_dir("HeteroGen")
         make_dir(self.sys_name)
+        cluster_1 = None
 
-        # Generate level based on given protocol and check input SSP
-        level_1_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
-        level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
-        # level_2_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
-        # level_2_2_2 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+        # # Generate level based on given protocol and check input SSP
+        # level_1_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
+        # level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L1")
+        # # level_2_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+        # # level_2_2_2 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+        #
+        # # Generate higher level inter cluster protocol
+        #
+        # # For each cluster generate the connecting controllers
+        #
+        # # Generate the proxy caches, which are an input requirement to the HeteroGen controller
+        # # Proxy Cache interactions with the DIR are atomic, hence generate them before concurrency is generated
+        # # The new DirProxyCache replaces to original directory architecture in level_1
+        #
+        # # Bridge Generation
+        # hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
+        # ProtoCCTablePrinter().ptransitiontable(list(level_1_1.directory.get_architecture_transitions()))
+        # Debug.psection(f"Directory")
+        # cache_machine_1 = Machine(level_1_1.cache)
+        # directory_machine_2 = Machine(level_2_1.directory)
+        # # cache_machine_2 = Machine(level_2.cache)
+        # hhcache_machine = Machine(level_1_1.directory)
+        # Debug.psection(f"Cache controller L1")
+        # ProtoCCTablePrinter().ptransitiontable(list(level_1_1.cache.get_architecture_transitions()))
+        # Debug.psection(f"Bridge")
+        # ProtoCCTablePrinter().ptransitiontable(list(level_1_1.directory.get_architecture_transitions()))
+        # Debug.psection(f"Directory")
+        # ProtoCCTablePrinter().ptransitiontable(list(level_2_1.directory.get_architecture_transitions()))
+        #                                                                                                            # L2 private for L1
 
-        # Generate higher level inter cluster protocol
 
-        # For each cluster generate the connecting controllers
-
-        # Generate the proxy caches, which are an input requirement to the HeteroGen controller
-        # Proxy Cache interactions with the DIR are atomic, hence generate them before concurrency is generated
-        # The new DirProxyCache replaces to original directory architecture in level_1
-
-        # Bridge Generation
-        hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
-        ProtoCCTablePrinter().ptransitiontable(list(level_1_1.directory.get_architecture_transitions()))
-        Debug.psection(f"Directory")
-        cache_machine_1 = Machine(level_1_1.cache)
-        directory_machine_2 = Machine(level_2_1.directory)
-        # cache_machine_2 = Machine(level_2.cache)
-        hhcache_machine = Machine(level_1_1.directory)
-        Debug.psection(f"Cache controller L1")
-        ProtoCCTablePrinter().ptransitiontable(list(level_1_1.cache.get_architecture_transitions()))
-        Debug.psection(f"Bridge")
-        ProtoCCTablePrinter().ptransitiontable(list(level_1_1.directory.get_architecture_transitions()))
-        Debug.psection(f"Directory")
-        ProtoCCTablePrinter().ptransitiontable(list(level_2_1.directory.get_architecture_transitions()))
-                                                                                                                   # L2 private for L1
-        if has_l2_private:
+        if has_one_level:
+            level_1_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
+            level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L1")
+            # bridge algorithm needed for generating S_store, S-evict, M_evict state
+            hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
+            cache_machine_1 = Machine(level_1_1.cache)
+            directory_machine_2 = Machine(level_2_1.directory)
+            cluster_1 = Cluster(tuple([cache_machine_1, directory_machine_2]), 'C1', False)
+        elif has_two_level:
+            level_1_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
+            level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+            hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
+            cache_machine_1 = Machine(level_1_1.cache)
+            directory_machine_2 = Machine(level_2_1.directory)
+            hhcache_machine = Machine(level_1_1.directory)
+            cluster_1 = Cluster(tuple([cache_machine_1, directory_machine_2, hhcache_machine]), 'C1', False)
+        elif has_three_level:
+            level_1_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
+            level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")
+            hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
             level_1_2_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
             level_1_2_2 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
             l2_private_dir_1 = HHDirArchitecture_L2private(level_1_2_1, level_1_2_2, access_map_table, False)
             Debug.psection(f"Cache controller L1_2 private")
             ProtoCCTablePrinter().ptransitiontable(list(level_1_2_1.directory.get_architecture_transitions()))
+            cache_machine_1 = Machine(level_1_1.cache)
+            directory_machine_2 = Machine(level_2_1.directory)
+            hhcache_machine = Machine(level_1_1.directory)
             level_1_2_1.directory.global_arch = level_1_1.directory.global_arch
             level_1_2_1.directory.arch_name = "bridge_private"
             l2_private = Machine(level_1_2_1.directory)
             cluster_1 = Cluster(tuple([cache_machine_1, directory_machine_2, hhcache_machine, l2_private]), 'C1', False)
         else:
-            cluster_1 = Cluster(
-            tuple([cache_machine_1, directory_machine_2, hhcache_machine]),'C1', False)
-        RunSLICCModular(cluster_1, self.sys_name)
+            assert(cluster_1 is None)
+
+        if cluster_1 is not None:
+            RunSLICCModular(cluster_1, self.sys_name)
+        else:
+            print("Error: cluster_1 was not initialized. Exiting.")
+            sys.exit(1)
 
 
 
