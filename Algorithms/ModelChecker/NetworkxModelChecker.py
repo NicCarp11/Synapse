@@ -256,6 +256,8 @@ class NetworkxModelChecker(Debug):
         for arch in arch_set:
             if arch.global_arch.dependent_level_list[0].parser.filename.startswith("MOESI"):
                 self.mach_term_cond = 3
+            elif arch.global_arch.dependent_level_list[0].parser.filename.startswith("MESIF"):
+                self.mach_term_cond = 3
             else:
                 self.mach_term_cond = 2
 
