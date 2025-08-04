@@ -59,11 +59,12 @@ class Evict:
 class BaseAccess:
 
     k_load = 'load'
+    k_ifetch = 'ifetch'
     k_store = 'store'
     k_evict = 'evict'
 
     # Access keywords
-    Access_str_list = [k_load] + [k_store]
+    Access_str_list = [k_load] + [k_store] + [k_ifetch]
     Evict_str_list = [k_evict]
 
     Access = Access
@@ -72,12 +73,14 @@ class BaseAccess:
 
     def __init__(self):
         self.access_map: Dict[str, Union[Access, Evict]] = {
+            self.k_ifetch: Access(self.k_ifetch),
             self.k_load: Access(self.k_load),
             self.k_store: Access(self.k_store),
             self.k_evict: Evict(self.k_evict)
                                               }
         self.access_to_base_access_map: Dict[Union[Access, Evict], List[Union[Access, Evict, None]]] = {}
         self.map_access_to_base_access(self.k_load, self.k_load)
+        self.map_access_to_base_access(self.k_ifetch, self.k_ifetch)
         self.map_access_to_base_access(self.k_store, self.k_store)
         self.map_access_to_base_access(self.k_evict, self.k_evict)
 

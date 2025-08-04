@@ -40,7 +40,7 @@ class ModularMsg(GenMsgBase, ABC):
     def __init__(self, cluster: Cluster, file_name: str):
         GenMsgBase.__init__(self, self.TemplateDir)
 
-        file_name = file_name.split(".")[0] + "_msg.sm"
+        file_name = file_name.split(".")[0] + "_msg_synth.sm"
 
         with open(file_name, "w") as gem5file:
             gem5file.write(self.gen_msg_enum_str(cluster) + self.nl)

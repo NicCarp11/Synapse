@@ -113,9 +113,9 @@ def get_states_following_invalid_states(arch: FlatArchitecture) -> Set[State_v2]
     return next_states
 
 
-def _get_hit_events(arch: BaseArchitecture) -> Dict[str, List[Tuple[str, str]]]:
-    res = {"load": [], "store": []}
-    for state in arch.stable_states:
+def _get_hit_events(arch: FlatArchitecture) -> Dict[str, List[Tuple[str, str]]]:
+    res = {"load": [], "store": [], "ifetch":[]}
+    for state in arch.get_architecture_stable_states():
         for access in state.getaccesshit():
             assert access.final_state in arch.stable_states
             access_type = str(access.guard)

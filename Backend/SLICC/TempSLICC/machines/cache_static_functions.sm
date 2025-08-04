@@ -8,9 +8,14 @@ void unset_tbe();
 
 MachineID mapAddressToMachine(Addr addr, MachineType mtype);
 
-Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
-  return static_cast(Entry, "pointer", cache.lookup(LineAddress));
-}
+  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
+    if (is_valid(cache.lookup(LineAddress))) {
+      return static_cast(Entry, "pointer", cache.lookup(LineAddress));
+    }
+    else {
+      return static_cast(Entry, "pointer", cache_instruction.lookup(LineAddress));
+    }
+  }
 
  DataBlock getCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress) {
     if (is_valid(tbe) && tbe.dirty) {

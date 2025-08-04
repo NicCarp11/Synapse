@@ -46,7 +46,7 @@ class GenDirStateDecl(TemplateHandler):
         state_declaration_body = GenMachineStateDecl.gen_machine_state_decl_body_str(self, arch) \
                                  + self.nl \
                                  + self.nl.join([self.tab + self.string_repl_keys(self.open_template("state_declaration_entry.sm"),
-                                                                    [state_name, "Busy"]
+                                                                    [state_name, "Read_Only"]
                                                                     )
                                             for state_name in main_mem_induced_states
                                             ]

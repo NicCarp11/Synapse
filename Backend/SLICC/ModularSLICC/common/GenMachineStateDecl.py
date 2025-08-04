@@ -101,16 +101,21 @@ class GenMachineStateDecl:
                 else:
                     GenMachineStateDecl._state_2_permission_cache[state.state] = "Read_Only"
                     return "Read_Only"
+        elif arch.machine.mach_type == ProtoMachine.k_dir:
+            if not state.stable:
+                accesses = Util.get_arch_access_perms(arch, state, BaseAccess.k_load)
+            else:
+                accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
 
 
-
-        accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
+        # accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
 
         # This definitely needs to evolve in the future...
         if not cache:
             if GenMachineStateDecl.k_busy in accesses:
                 return "Busy"
         else:
+            accesses = Util.get_arch_access_perms(arch, state, GenMachineStateDecl.k_busy)
             if state.stable:
                 if GenMachineStateDecl.k_busy in accesses:
                     GenMachineStateDecl._state_2_permission_cache[state.state] = "Busy"

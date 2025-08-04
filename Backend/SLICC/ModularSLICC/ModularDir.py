@@ -41,7 +41,7 @@ class ModularDir(GenDirBase):
     def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, machine_mappings: dict[str, str]):
         GenDirBase.__init__(self, self.TemplateDir)
 
-        file_name = file_name.split(".")[0] + "_dir.sm"
+        file_name = file_name.split(".")[0] + "_dir_synth.sm"
 
         out_ports = Util.get_out_ports(arch)
         in_ports = Util.get_in_ports(arch)

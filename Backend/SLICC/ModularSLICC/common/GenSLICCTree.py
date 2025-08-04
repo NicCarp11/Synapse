@@ -225,6 +225,13 @@ class GenSLICCTree(TemplateHandler, Debug):
                 access = "load"
             elif "store" in split_trans_name:
                 access = "store"
+            elif "ifetch" in split_trans_name:
+                access = "ifetch"
+
+            # TODO be a bit more graceful handling this case
+            if str(self.arch.machine.mach_type) == ProtoMachine.k_dir:
+                access = None
+
             # TODO get type of access in less hacky way...
             final_state_perms = [str(a.guard) for a in transition.final_state.access_hit]
             if access is not None and access in final_state_perms:

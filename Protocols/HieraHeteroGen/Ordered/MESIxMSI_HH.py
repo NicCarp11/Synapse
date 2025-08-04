@@ -41,6 +41,9 @@ class MESIxMSI_HH(RunHH, Debug):
     translation_table_first = {'load': ['load'], 'ifetch': ['load'], 'store': ['store']} # MESI
     translation_table_second = {'load': ['load'], 'ifetch': ['load'], 'store': ['store']} # MSI
 
+    # translation_table_first = {'load': ['load'], 'store': ['store']} # MESI
+    # translation_table_second = {'load': ['load'], 'store': ['store']} # MSI
+
     #translation_table_first = {'load': ['acquire'], 'store': ['release']}  # RCC
     #translation_table_second = {'load': ['load'], 'store': ['store'], 'acquire': ['load'], 'release': ['store']}  # MSI
 
@@ -57,8 +60,19 @@ class MESIxMSI_HH(RunHH, Debug):
         has_two_level = False
         has_one_level = True
         path = OrderedReplyForwardingProtocols().get_cur_protocol_path()
-        protocol_1_name: str = "MESI.pcc"
-        protocol_2_name: str = "MESI.pcc"
+
+        # protocol_1_name: str = "MESI_unord.pcc"
+        # protocol_2_name: str = "MESI_unord.pcc"
+
+        protocol_1_name: str = "MESIF_unord.pcc"
+        protocol_2_name: str = "MESIF_unord.pcc"
+
+        # protocol_1_name: str = "MOESI_unord.pcc"
+        # protocol_2_name: str = "MOESI_unord.pcc"
+
+        # protocol_1_name: str = "MSI_unord.pcc"
+        # protocol_2_name: str = "MSI_unord.pcc"
+
         self.run_test(protocol_1_name, protocol_2_name, path,
                       [self.translation_table_first, self.translation_table_second],
                       self.sc_litmus_test_gen.litmus_test_list, self.rc_litmus_test_gen.litmus_test_list, has_one_level, has_two_level,has_three_level )

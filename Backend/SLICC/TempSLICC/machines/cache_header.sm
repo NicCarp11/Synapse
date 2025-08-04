@@ -1,6 +1,7 @@
 machine(MachineType:L1Cache, "Cache controller")
 : Sequencer *sequencer;
   CacheMemory *cache;
+  CacheMemory *cache_instruction;
   bool send_evictions;
   int $1$_id;
 

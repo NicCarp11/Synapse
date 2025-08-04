@@ -10,7 +10,7 @@ class ModularProxy(GenProxyBase):
     def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, id_mapping: dict[str, str], cache_id: None | int = None):
         GenProxyBase.__init__(self, self.TemplateDir)
 
-        file_name = file_name.split(".")[0] + f"_proxy{cache_id or ''}.sm"
+        file_name = file_name.split(".")[0] + f"_proxy{cache_id or ''}_synth.sm"
 
         out_ports = Util.get_out_ports(arch, True)
         in_ports = Util.get_in_ports(arch, True)

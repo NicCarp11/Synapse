@@ -41,7 +41,10 @@ class ModularCache(GenCacheBase):
     def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, id_mapping: dict[str, str], cache_id: None | int = None):
         GenCacheBase.__init__(self, self.TemplateDir)
 
-        file_name = file_name.split(".")[0] + "_cache.sm"
+        file_name = file_name.split(".")[0] + f"_cache{cache_id or ''}_synth.sm"
+
+        out_ports = Util.get_out_ports(arch, True)
+        in_ports = Util.get_in_ports(arch, True)
 
         machine_id = id_mapping[str(arch)]
 

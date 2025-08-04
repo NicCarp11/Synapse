@@ -117,7 +117,12 @@ class RunHH(Debug):
             hhgen_ctrl = HHDirArchitecture(level_1_1, level_2_1, access_map_table, False)
             cache_machine_1 = Machine(level_1_1.cache)
             directory_machine_2 = Machine(level_2_1.directory)
+
+            # cache_machine_1 = Machine(level_1_1.cache)
+            # directory_machine_2 = Machine(level_1_1.directory)
+            # self.verify_flat_protocols(cache_machine_1, directory_machine_2, self.sys_name, 4)
             cluster_1 = Cluster(tuple([cache_machine_1, directory_machine_2]), 'C1', False)
+            # RunMurphiCheck([cluster_1], filename_1, None, 2000)
         elif has_two_level:
             level_1_1 = Level(ProtoParser(protocol_1, filename_1, False, True), "L1")
             level_2_1 = Level(ProtoParser(protocol_2, filename_2, False, True), "L2")

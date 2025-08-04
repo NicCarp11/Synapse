@@ -70,7 +70,8 @@ class GenCacheTransitions(TemplateHandler):
         next_states = {str(state) for state in Util.get_states_following_invalid_states(arch)}
         for next_state in next_states:
             for state in invalid_states:
-                alloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_alloc_entry.sm"),
+                if str(next_state).split("_")[1] != "ifetch":
+                    alloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_alloc_entry.sm"),
                                                               [state,
                                                                next_state,
                                                                GenMachineActions.get_operation_action_name(state,
@@ -79,6 +80,16 @@ class GenCacheTransitions(TemplateHandler):
                                                                ]
                                                               )
                                         )
+                else:
+                    alloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_alloc_entry-instruction.sm"),
+                                                                  [state,
+                                                                   next_state,
+                                                                   GenMachineActions.get_operation_action_name(state,
+                                                                                                               next_state
+                                                                                                               ),
+                                                                   ]
+                                                                  )
+                                            )
         alloc_trans_str = (self.nl * 2).join(alloc_trans_strs)
 
         local_hit_trans_strs = []

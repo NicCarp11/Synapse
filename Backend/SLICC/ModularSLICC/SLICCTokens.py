@@ -113,5 +113,5 @@ base_message_vars = {
 
 proxy_key_fields = {
     "src": ProtoParserBase.t_id,
-    "exclusiveL1": ProtoParserBase.t_bool,
+    # "exclusiveL1": ProtoParserBase.t_bool,
 }

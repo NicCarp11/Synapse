@@ -63,8 +63,8 @@ class GenCacheInPorts(TemplateHandler):
 
     def _gen_mandatory_in_port(self, cluster: Cluster, arch: FlatArchitecture, out_ports: 'OrderedDict[str, str]', machine_mappings: dict[str, str]) -> str:
 
-        access_transitions = {access: MultiDict() for access in ["load", "store", "evict"]}
-        for state in arch.get_architecture_states_verified():
+        access_transitions = {access: MultiDict() for access in ["load", "store", "evict", "ifetch"]}
+        for state in sorted(arch.get_architecture_states_verified(), key=str):
             for trans in state.getaccessmiss():
                 access = trans.guard
                 access = str(access)
@@ -86,9 +86,11 @@ class GenCacheInPorts(TemplateHandler):
         return self.string_repl_keys(self.open_template("mandatory_cpu_in_port.sm"),
                                      [self._gen_access_str(
                                          cluster, arch, access_transitions, out_ports, machine_mappings, 4, "evict"),
-                                      self._gen_access_str(
-                                         cluster, arch, access_transitions, out_ports, machine_mappings, 5, "load"),
-                                      self._gen_access_str(
+                                    self._gen_access_str(
+                                             cluster, arch, access_transitions, out_ports, machine_mappings, 5, "load"),
+                                    self._gen_access_str(
+                                         cluster, arch, access_transitions, out_ports, machine_mappings, 5, "ifetch"),
+                                    self._gen_access_str(
                                          cluster, arch, access_transitions, out_ports, machine_mappings, 5, "store"),
                                       ]
                                      )
