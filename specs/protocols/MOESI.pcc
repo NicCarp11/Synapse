@@ -1,0 +1,698 @@
+# NrCaches 4
+
+Network { Ordered fwd;   //FwdGetS, FwdGetM, Inv, PutAck
+          Ordered resp;  // Data, InvAck
+          Ordered req;   //GetS, GetM, PutM
+          };
+
+Cache {
+    State I;
+    Data cl;
+    int[0..NrCaches] acksReceived = 0;
+    int[0..NrCaches] acksExpected = 0;
+} set[NrCaches] cache;
+
+Directory {
+    State I;
+    Data cl;
+    set[NrCaches] ID cache;
+    ID owner;
+} directory;
+
+Message Request{};
+
+Message Ack{};
+
+Message RespData{
+    Data cl;
+};
+Message RespAck{
+    int[0..NrCaches] acksExpected;
+};
+
+Message RespDataAck{
+    Data cl;
+    int[0..NrCaches] acksExpected;
+};
+
+Architecture cache {
+    Stable{I, S, O, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, load, State){
+        msg = Request(GetS, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                load;
+                State = S;
+                break;
+
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                load;
+                State = E;
+                break;
+        }
+    }
+
+    Process(I, ifetch, State){
+        msg = Request(GetSIfetch, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                ifetch;
+                State = S;
+                break;
+        }
+    }
+
+    Process(I, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                cl=GetM_Ack_AD.cl;
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+
+        }
+    }
+
+    // Only useful to get the I_evict transient state generated
+    Process(I, evict, State){
+        msg = Request(PutI, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutI_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, load, S){
+        load;
+    }
+
+        Process(S, ifetch, S){
+        ifetch;
+    }
+
+    Process(S, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    Process(S, evict, State){
+        msg = Request(PutS, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutS_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    Process(S, Inv, I){
+        msg = Ack(Inv_Ack, ID, Inv.src);
+        resp.send(msg);
+    }
+
+    // M ////////////////////////////////////////////////////////
+    Process(M, load){
+        load;
+    }
+
+        Process(M, ifetch){
+        ifetch;
+    }
+
+    Process(M, store){
+        store;
+    }
+
+    Process(M, Fwd_GetM, I){
+        msg = RespData(GetM_Ack_D, ID, Fwd_GetM.src, cl);
+        resp.send(msg);
+    }
+
+    Process(M, Fwd_GetS, O){
+        msg = RespData(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+
+        msg = Ack(Unblock, ID, directory.ID);
+        resp.send(msg);
+    }
+
+    Process(M, evict, State){
+        msg = RespData(PutM, ID, directory.ID, cl);
+        req.send(msg);
+
+        await{
+            when PutM_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // O ////////////////////////////////////////////////////////
+    Process(O, load){
+        load;
+    }
+
+        Process(O, ifetch){
+        load;
+    }
+
+    Process(O, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    msg = Ack(Unblock, ID, directory.ID);
+                    resp.send(msg);
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            msg = Ack(Unblock, ID, directory.ID);
+                            resp.send(msg);
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    Process(O, Fwd_GetM, I){
+        msg = RespDataAck(GetM_Ack_AD, ID, Fwd_GetM.src, cl, Fwd_GetM.acksExpected);
+        resp.send(msg);
+
+        msg = Ack(Unblock, ID, directory.ID);
+        resp.send(msg);
+    }
+
+    Process(O, Fwd_GetS, O){
+        msg = RespData(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+
+        msg = Ack(Unblock, ID, directory.ID);
+        resp.send(msg);
+    }
+
+    Process(O, evict, State){
+        msg = RespData(PutO, ID, directory.ID, cl);
+        req.send(msg);
+
+        await{
+            when PutO_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, load){
+        load;
+    }
+
+        Process(E, ifetch){
+        ifetch;
+    }
+
+    Process(E, store, M){
+        store;
+    }
+
+    Process(E, Fwd_GetM, I){
+        msg = RespData(GetM_Ack_D, ID, Fwd_GetM.src, cl);
+        resp.send(msg);
+    }
+
+    Process(E, Fwd_GetS, O){
+        msg = RespData(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+
+        msg = Ack(Unblock, ID, directory.ID);
+        resp.send(msg);
+    }
+
+    Process(E, evict, State){
+        msg = Ack(PutE, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutE_Ack:
+                State = I;
+                break;
+        }
+    }
+
+}
+
+Architecture directory {
+    Stable{I, S, O, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, GetS, E){
+       msg = RespData(GetM_Ack_D, ID, GetS.src, cl);
+       resp.send(msg);
+       owner = GetS.src;
+    }
+
+     Process(I, GetSIfetch, S){
+       msg = RespData(GetS_Ack, ID, GetSIfetch.src, cl);
+       resp.send(msg);
+       cache.add(GetSIfetch.src);
+    }
+
+    Process(I, GetM, M){
+        msg = RespDataAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+        resp.send(msg);
+        owner = GetM.src;
+    }
+
+    Process(I, PutS){
+       msg = Ack(PutI_Ack, ID, PutS.src);
+       resp.send(msg);
+       cache.del(PutS.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(I, PutE){
+       msg = Ack(PutI_Ack, ID, PutE.src);
+       resp.send(msg);
+       cache.del(PutE.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(I, PutM){
+       msg = Ack(PutI_Ack, ID, PutM.src);
+       resp.send(msg);
+       cache.del(PutM.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, GetS){
+       msg = RespData(GetS_Ack, ID, GetS.src, cl);
+       resp.send(msg);
+       cache.add(GetS.src);
+    }
+
+           Process(S, GetSIfetch, S){
+       msg = RespData(GetS_Ack, ID, GetSIfetch.src, cl);
+       resp.send(msg);
+       cache.add(GetSIfetch.src);
+    }
+
+    Process(S, GetM, M){
+       if cache.contains(GetM.src){
+           cache.del(GetM.src);
+           if cache.count() == 0{
+               msg = RespData(GetM_Ack_D, ID, GetM.src, cl);
+               resp.send(msg);
+           } else {
+               msg = RespDataAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+               resp.send(msg);
+               msg = Ack(Inv, GetM.src, GetM.src);
+               fwd.mcast(msg, cache);
+           }
+       } else {
+           msg = RespDataAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+           resp.send(msg);
+           if cache.count()!=0{
+                msg = Ack(Inv, GetM.src, GetM.src);
+                fwd.mcast(msg, cache);
+           }
+       }
+       owner = GetM.src;
+       cache.clear();
+    }
+
+    Process(S, PutS, State){
+       if cache.contains(PutS.src){
+           msg = Ack(PutS_Ack, ID, PutS.src);
+           resp.send(msg);
+           cache.del(PutS.src);
+           if cache.count() == 0{
+             State=I;
+             break;
+           }
+       } else {
+           msg = Ack(PutI_Ack, ID, PutS.src);
+           resp.send(msg);
+       }
+    }
+
+    Process(S, PutM, State){
+       if cache.contains(PutM.src){
+           msg = Ack(PutS_Ack, ID, PutM.src);
+           resp.send(msg);
+           cache.del(PutM.src);
+           if cache.count() == 0{
+             State=I;
+             break;
+           }
+       } else {
+           msg = Ack(PutI_Ack, ID, PutM.src);
+           resp.send(msg);
+       }
+    }
+
+    Process(S, PutE, State){
+       if owner == PutE.src{
+           msg = Ack(PutS_Ack, ID, PutE.src);
+           resp.send(msg);
+           cache.del(PutE.src);
+           if cache.count() == 0{
+             State=I;
+             break;
+           }
+       } else {
+           msg = Ack(PutI_Ack, ID, PutE.src);
+           resp.send(msg);
+       }
+    }
+
+    // M ////////////////////////////////////////////////////////
+    Process(M, GetS, State){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+
+       await{
+           when Unblock:
+               State=O;
+               break;
+       }
+    }
+
+        Process(M, GetSIfetch, State){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+
+       await{
+           when Unblock:
+               State=O;
+               break;
+       }
+    }
+
+    Process(M, GetM){
+       msg = RespAck(Fwd_GetM, GetM.src, owner, 0);
+       fwd.send(msg);
+       owner = GetM.src;
+    }
+
+    Process(M, PutM, State){
+       cache.del(PutM.src);
+       if owner == PutM.src{
+           msg = Ack(PutM_Ack, ID, PutM.src);
+           resp.send(msg);
+           cl = PutM.cl;
+           State=I;
+       }
+       else{
+          msg = Ack(PutI_Ack, ID, PutM.src);
+          resp.send(msg);
+       }
+    }
+
+    // O ////////////////////////////////////////////////////////
+    Process(O, GetS, State){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+       
+       await{
+           when Unblock:
+               State=O;
+               break;
+       }
+    }
+
+        Process(O, GetSIfetch, State){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+
+       await{
+           when Unblock:
+               State=O;
+               break;
+       }
+    }
+
+    Process(O, GetM, State){
+       cache.del(GetM.src);
+       if owner == GetM.src{
+           msg = RespDataAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+           fwd.send(msg);
+           if cache.count()!=0{
+                msg = Ack(Inv, GetM.src, GetM.src);
+                fwd.mcast(msg, cache);
+           }
+
+       } else {
+           msg = RespAck(Fwd_GetM, GetM.src, owner, cache.count());
+           fwd.send(msg);
+           if cache.count()!=0{
+                msg = Ack(Inv, GetM.src, GetM.src);
+                fwd.mcast(msg, cache);
+           }
+       }
+       owner = GetM.src;
+       cache.clear();
+
+       await{
+           when Unblock:
+               State=M;
+               break;
+       }
+    }
+
+    Process(O, PutO, State){
+      if owner == PutO.src{
+        msg = Ack(PutO_Ack, ID, PutO.src);
+        resp.send(msg);
+        cl = PutO.cl;
+        cache.del(PutO.src);
+
+        if cache.count()==0{
+            State=I;
+        } else {
+            State=S;
+        }
+      } else{
+        msg = Ack(PutI_Ack, ID, PutO.src);
+        resp.send(msg);
+        cache.del(PutO.src);
+      }
+    }
+
+    Process(O, PutM, State){
+      if owner == PutM.src{
+        msg = Ack(PutO_Ack, ID, PutM.src);
+        resp.send(msg);
+        cl = PutM.cl;
+        cache.del(PutM.src);
+
+        if cache.count()==0{
+            State=I;
+        } else {
+            State=S;
+        }
+      } else{
+        msg = Ack(PutI_Ack, ID, PutM.src);
+        resp.send(msg);
+        cache.del(PutM.src);
+      }
+    }
+
+    Process(O, PutE, State){
+      if owner == PutE.src{
+        msg = Ack(PutO_Ack, ID, PutE.src);
+        resp.send(msg);
+        cache.del(PutE.src);
+
+        if cache.count()==0{
+            State=I;
+        } else {
+            State=S;
+        }
+      } else{
+        msg = Ack(PutI_Ack, ID, PutE.src);
+        resp.send(msg);
+        cache.del(PutE.src);
+      }
+    }
+
+    Process(O, PutS){
+       if cache.contains(PutS.src){
+           msg = Ack(PutS_Ack, ID, PutS.src);
+           resp.send(msg);
+           cache.del(PutS.src);
+
+       } else {
+           msg = Ack(PutI_Ack, ID, PutS.src);
+           resp.send(msg);
+       }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, GetS, State){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+
+       await{
+           when Unblock:
+               State=O;
+               break;
+       }
+    }
+Process(E, GetSIfetch, State){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+
+       await{
+           when Unblock:
+               State=O;
+               break;
+       }
+    }
+
+    Process(E, GetM, M){
+       msg = RespAck(Fwd_GetM, GetM.src, owner, 0);
+       fwd.send(msg);
+       owner = GetM.src;
+    }
+
+    Process(E, PutE, State){
+       cache.del(PutE.src);
+       if owner == PutE.src{
+            msg = Ack(PutE_Ack, ID, PutE.src);
+            resp.send(msg);
+            State=I;
+       }
+       else{
+            msg = Ack(PutI_Ack, ID, PutE.src);
+            resp.send(msg);
+       }
+    }
+
+    Process(E, PutM, State){
+       cache.del(PutM.src);
+       if owner == PutM.src{
+         msg = Ack(PutM_Ack, ID, PutM.src);
+         resp.send(msg);
+         cl = PutM.cl;
+         State=I;
+       }
+       else{
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+    }
+}
+

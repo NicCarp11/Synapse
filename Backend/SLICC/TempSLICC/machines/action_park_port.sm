@@ -1,0 +1,6 @@
+action(recycle$0$, $1$, desc="Park the message at the head of the $0$ port") {
+  DPRINTF(RubySlicc, "Stalling $0$ (addr: %#x)\n", address);
+  // No handler for it in the state of its block: it waits out of the queue until the block
+  // enters a state that serves this port (setState, wakeUpParked).
+  stall_and_wait($0$, address);
+}

@@ -1,0 +1,65 @@
+// Caching policies of a cache between two protocols (an LLC, a private L2): the client of its
+// parent's protocol and the manager of the caches below it. The first matching rule wins.
+//
+//   Rule( client state, request from a child, client state to reach before serving the child )
+
+// Write-back, inclusive: every block held by a child is also allocated here, and dirty data
+// written back by a child stays in this level.
+Policy WB_INCL {
+    // Dirty write-back of a child: keep the dirty data, the client becomes dirty (e.g. E -> M)
+    Rule( S(RdWr,_,_),   M(Wr,Dirty,_),  S(RdWr,Dirty,_) );
+    // Write-back while the client cannot hold dirty data (no write permission, or no block at all):
+    // with inclusion a child can only own a dirty copy if this level has write permission, so this
+    // is a late write-back racing with an invalidation, which the manager answers as stale
+    Rule( S(_,_,_),      M(Wr,Dirty,_),  S(_,_,_) );
+    // Store miss / upgrade of a child: obtain an exclusive copy first (E or M satisfy RdWr)
+    Rule( S(_,_,_),      M(Wr,_,_),      S(RdWr,P,_) );
+    // Load miss of a child on a block not present here: fetch at least a readable copy (Fig. 6)
+    Rule( S(_,NP,_),     M(Rd,None,_),   S(Rd,P,_) );
+    // Load of a child on a block present here: nothing to do at the client
+    Rule( S(Rd,P,_),     M(Rd,None,_),   S(Rd,P,_) );
+    // Clean eviction notification of a child (PutS, PutE): nothing to do at the client
+    Rule( S(_,_,_),      M(None,_,_),    S(_,_,_) );
+    // A request from the parent: no rule, the children keep what the client keeps (Alg. 1, lines
+    // 10-13). A shared read (Fwd_GetS, CXL BISnpData) downgrades them to S, an exclusive one
+    // (Fwd_GetM, Inv, BISnpInv) invalidates them. A Downgrade rule would ask for more, e.g. to
+    // recall the children to I on a shared read too.
+}
+
+// Write-through, inclusive: WB_INCL plus the accesses of release-consistency code that the
+// children perform here, the coherence point, without holding a permission (nco requests: MESI-RC
+// GetNT, GetACQ, PutNT). A child's non-temporal or release store writes its bytes into this level,
+// which takes write permission itself, without asking its parent (Local): every block must have a
+// single cache at this level, e.g. an LLC sliced by address. Acquire loads are served as the loads
+// of a child (the block is fetched if not present); a non-temporal load reads nothing (its value
+// is discarded by the sequencer) and is answered with whatever this level holds, without fetching.
+Policy WT_INCL {
+    // Write-through of a child without ownership: take write permission here, keep the bytes dirty
+    Local( S(_,_,_),     M(Wr,Dirty,nco), S(RdWr,Dirty,_) );
+    // Request of a child that reads nothing (non-temporal load): nothing to do at the client
+    Rule( S(_,_,_),      M(None,NP,nco),  S(_,_,_) );
+    Rule( S(RdWr,_,_),   M(Wr,Dirty,_),  S(RdWr,Dirty,_) );
+    Rule( S(_,_,_),      M(Wr,Dirty,_),  S(_,_,_) );
+    Rule( S(_,_,_),      M(Wr,_,_),      S(RdWr,P,_) );
+    Rule( S(_,NP,_),     M(Rd,None,_),   S(Rd,P,_) );
+    Rule( S(Rd,P,_),     M(Rd,None,_),   S(Rd,P,_) );
+    Rule( S(_,_,_),      M(None,_,_),    S(_,_,_) );
+}
+
+// Write-back, exclusive: the block's data is in this level only while no child holds a copy (a
+// victim cache for the children); otherwise it lives in the children and this level keeps the
+// coherence state only (a tag); a child that drops the last copy gives the data back with its
+// eviction (the protocol's PutS/PutE carry the block). Requests of the children are steered as
+// for the inclusive LLC: the client fetches the permission and the data, which pass to the child.
+// On a request from the parent the children keep what the client keeps (Alg. 1, no Downgrade
+// rule); a client that must answer with data it does not hold takes it from a child first.
+Policy WB_EXCL {
+    Rule( S(RdWr,_,_),   M(Wr,Dirty,_),  S(RdWr,Dirty,_) );
+    Rule( S(_,_,_),      M(Wr,Dirty,_),  S(_,_,_) );
+    Rule( S(_,_,_),      M(Wr,_,_),      S(RdWr,P,_) );
+    Rule( S(_,NP,_),     M(Rd,None,_),   S(Rd,P,_) );
+    Rule( S(Rd,P,_),     M(Rd,None,_),   S(Rd,P,_) );
+    Rule( S(_,_,_),      M(None,_,_),    S(_,_,_) );
+    // the data is kept here only while the children hold nothing
+    Data( S(None,NP,_) );
+}

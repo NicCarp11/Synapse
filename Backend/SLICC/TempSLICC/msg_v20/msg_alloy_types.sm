@@ -1,0 +1,38 @@
+// Types that alloy-gem5's MessageBuffer (gem5 v20, Synapse S4) includes to count the messages of
+// its own protocols by type. The messages of this protocol are CoherenceMessage: none is counted.
+enumeration(CoherenceRequestType, desc="Request types of alloy-gem5's protocols (unused)") {
+  NULL_REQUEST, desc="Unused";
+}
+
+enumeration(CoherenceResponseType, desc="Response types of alloy-gem5's protocols (unused)") {
+  NULL_RESPONSE, desc="Unused";
+}
+
+structure(RequestMsg, desc="Request of alloy-gem5's protocols (unused)", interface="Message") {
+  Addr addr, desc="Physical address";
+  CoherenceRequestType Type, desc="Type of request";
+  MessageSizeType MessageSize, desc="Size category of the message";
+
+  bool functionalRead(Packet *pkt) {
+    return false;
+  }
+
+  bool functionalWrite(Packet *pkt) {
+    return false;
+  }
+}
+
+structure(ResponseMsg, desc="Response of alloy-gem5's protocols (unused)", interface="Message") {
+  Addr addr, desc="Physical address";
+  CoherenceResponseType Type, desc="Type of response";
+  MessageSizeType MessageSize, desc="Size category of the message";
+
+  bool functionalRead(Packet *pkt) {
+    return false;
+  }
+
+  bool functionalWrite(Packet *pkt) {
+    return false;
+  }
+}
+

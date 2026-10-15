@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use Synapse, please cite the paper."
+title: "Synapse"
+url: "https://synapse-coherence.github.io"
+license: MIT
+authors:
+  - family-names: Carpentieri
+    given-names: Nicolo
+  - family-names: Lefort
+    given-names: Anatole
+  - family-names: Schall
+    given-names: David
+  - family-names: Pritzi
+    given-names: Julian
+  - family-names: Bhatotia
+    given-names: Pramod
+preferred-citation:
+  type: conference-paper
+  title: "Decoupling Protocol, Topology, and Policy for Automated Synthesis of Coherence Controllers"
+  authors:
+    - family-names: Carpentieri
+      given-names: Nicolo
+    - family-names: Lefort
+      given-names: Anatole
+    - family-names: Schall
+      given-names: David
+    - family-names: Pritzi
+      given-names: Julian
+    - family-names: Bhatotia
+      given-names: Pramod
+  collection-title: "Proceedings of the 59th IEEE/ACM International Symposium on Microarchitecture (MICRO)"
+  year: 2026
+  conference:
+    name: "MICRO 2026"
+    city: Athens
+    country: GR

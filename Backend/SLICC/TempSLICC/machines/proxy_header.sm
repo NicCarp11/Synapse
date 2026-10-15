@@ -1,0 +1,10 @@
+machine(MachineType:$0$, "Proxy cache controller")
+: CacheMemory *cache;
+
+  Cycles responseLatency := 1;
+  Cycles recycleLatency := 10;
+
+  // Dynamic networks
+  $1$
+
+{

@@ -1,0 +1,8 @@
+action(deallocEntry, "d", desc="Deallocate an entry") {
+      if (is_valid(cache.lookup(address))){
+              cache.deallocate(address);
+      } else if (is_valid(cache_instruction.lookup(address))) {
+              cache_instruction.deallocate(address);
+      }
+      unset_cache_entry();
+}

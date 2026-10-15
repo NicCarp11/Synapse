@@ -1,0 +1,18 @@
+# S1 with three cache levels: every core has a private L2 between its L1 and the chip's shared
+# last-level cache.
+name: MESI_MESI_WB_INCL_SMP_3L      # the protocols of the on-core and off-core levels
+
+socket:
+  nodes:
+    - memory: {capacity: 8GiB}
+    - directory: {protocol: MESI}
+    - chip:
+        nodes:
+          - LLC: {protocol: MESI, policy: WB_INCL, capacity: 8MiB}
+          - core:
+              count: 8
+              nodes:
+                - L2: {protocol: MESI, policy: WB_INCL, capacity: 1MiB}
+                - L1: {capacity: 64KiB}
+        interconnect: {connects: [LLC, core], type: direct, latency: 5ns}
+  interconnect: {connects: [directory, chip], type: star, latency: 5ns}

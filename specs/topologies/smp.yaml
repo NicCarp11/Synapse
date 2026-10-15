@@ -1,0 +1,14 @@
+# S1, symmetric multiprocessor: the cores of one socket share a last-level cache, and a directory
+# manages the socket's memory.
+system: SMP
+
+socket:
+  nodes:
+    - memory: {capacity: 8GiB}
+    - directory: {protocol: MESI}
+    - LLC: {protocol: MESI, policy: WB_INCL, capacity: 2MiB}
+    - core:
+        count: 8
+        nodes:
+          - L1: {capacity: 64KiB}
+  interconnect: {connects: [directory, LLC, core], type: crossbar, latency: 5ns}
