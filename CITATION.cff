@@ -34,3 +34,77 @@ preferred-citation:
     name: "MICRO 2026"
     city: Athens
     country: GR
+references:
+  - type: conference-paper
+    title: "ProtoGen: Automatically Generating Directory Cache Coherence Protocols from Atomic Specifications"
+    authors:
+      - family-names: Oswald
+        given-names: Nicolai
+      - family-names: Nagarajan
+        given-names: Vijay
+      - family-names: Sorin
+        given-names: Daniel J.
+    collection-title: "Proceedings of the 45th Annual International Symposium on Computer Architecture (ISCA)"
+    year: 2018
+    start: 247
+    end: 260
+    doi: 10.1109/ISCA.2018.00030
+    repository-code: "https://github.com/Errare-humanum-est/ProtoGen"
+  - type: conference-paper
+    title: "HieraGen: Automated Generation of Concurrent, Hierarchical Cache Coherence Protocols"
+    authors:
+      - family-names: Oswald
+        given-names: Nicolai
+      - family-names: Nagarajan
+        given-names: Vijay
+      - family-names: Sorin
+        given-names: Daniel J.
+    collection-title: "Proceedings of the 47th Annual International Symposium on Computer Architecture (ISCA)"
+    year: 2020
+    repository-code: "https://github.com/Errare-humanum-est/HieraGen"
+  - type: conference-paper
+    title: "HeteroGen: Automatic Synthesis of Heterogeneous Cache Coherence Protocols"
+    authors:
+      - family-names: Oswald
+        given-names: Nicolai
+      - family-names: Nagarajan
+        given-names: Vijay
+      - family-names: Sorin
+        given-names: Daniel J.
+      - family-names: Gavrielatos
+        given-names: Vasilis
+      - family-names: Olausson
+        given-names: Theo
+      - family-names: Carr
+        given-names: Reece
+    collection-title: "IEEE International Symposium on High-Performance Computer Architecture (HPCA)"
+    year: 2022
+    start: 756
+    end: 771
+    doi: 10.1109/HPCA53966.2022.00061
+    repository-code: "https://github.com/Errare-humanum-est/HeteroGen"
+  - type: conference-paper
+    title: "vCXLGen: Automated Synthesis and Verification of CXL Bridges for Heterogeneous Architectures"
+    authors:
+      - family-names: Lefort
+        given-names: Anatole
+      - family-names: Pritzi
+        given-names: Julian
+      - family-names: Carpentieri
+        given-names: Nicolò
+      - family-names: Schall
+        given-names: David
+      - family-names: Dittrich
+        given-names: Simon
+      - family-names: Chakraborty
+        given-names: Soham
+      - family-names: Oswald
+        given-names: Nicolai
+      - family-names: Bhatotia
+        given-names: Pramod
+    collection-title: "Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS)"
+    year: 2026
+    start: 2177
+    end: 2196
+    doi: 10.1145/3779212.3790245
+    repository-code: "https://github.com/TUM-DSE/vCXLGen"
