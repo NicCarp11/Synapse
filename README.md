@@ -10,6 +10,73 @@ writes them as SLICC state machines for gem5, together with a gem5 setup of the 
 It implements *Decoupling Protocol, Topology, and Policy for Automated Synthesis of Coherence
 Controllers* (MICRO 2026). Project page: https://synapse-coherence.github.io.
 
+## Credits and provenance
+
+Synapse builds on **ProtoGen/HieraGen/HeteroGen** (Nicolai Oswald et al., University of Edinburgh) and **vCXLGen** (Anatole Lefort et al., Technical University of Munich); this repository is directly derived from their code.
+
+<details>
+<summary><b>What is inherited from them, and how to cite</b></summary>
+
+<br>
+
+**ProtoGen / HieraGen / HeteroGen (\*Gen tools)**: Nicolai Oswald, Vijay Nagarajan, Daniel J. Sorin et al.,
+The University of Edinburgh ([ProtoGen](https://github.com/Errare-humanum-est/ProtoGen),
+[HieraGen](https://github.com/Errare-humanum-est/HieraGen), [HeteroGen](https://github.com/Errare-humanum-est/HeteroGen)).
+The ProtoCC language and parser (`Parser/`, `ProtoCC.g`), the protocol data model (`DataObjects/`),
+the concurrency algorithm of ProtoGen (`Algorithms/ProtoDirectory`,
+HieraGen's proxy cache (`Algorithms/ProtoDirectory`),
+the Murphi backend and model-checking flow (`Backend/Murphi`,
+`MurphiLitmusTests/`) originate from these tools. Files derived from them keep their original copyright headers.
+
+**vCXLGen**: Systems Research Group, TUM ([TUM-DSE/vCXLGen](https://github.com/TUM-DSE/vCXLGen)).
+vCXLGen extended HeteroGen to synthesize and verify CXL bridges. Synapse starts from vCXLGen's code base and reuses or modifies most of its core for (hierarchical) controller generation.
+
+**New in Synapse:** the decoupled protocol / topology / policy specification (`specs/`) and the synthesis
+built on it (`Algorithms/Synapse/`), the modular SLICC backend that generates caches, directory and bridge
+controllers and the gem5 setup (`Backend/SLICC/`), the `synapse.py` frontend, and the changes to the
+inherited modules that these need.
+
+If you use Synapse, please also cite the work it builds on:
+
+```bibtex
+@inproceedings{oswald2018protogen,
+  author    = {Oswald, Nicolai and Nagarajan, Vijay and Sorin, Daniel J.},
+  title     = {{ProtoGen}: Automatically Generating Directory Cache Coherence Protocols from Atomic Specifications},
+  booktitle = {Proceedings of the 45th Annual International Symposium on Computer Architecture (ISCA)},
+  pages     = {247--260},
+  year      = {2018},
+  doi       = {10.1109/ISCA.2018.00030}
+}
+
+@inproceedings{oswald2020hieragen,
+  author    = {Oswald, Nicolai and Nagarajan, Vijay and Sorin, Daniel J.},
+  title     = {{HieraGen}: Automated Generation of Concurrent, Hierarchical Cache Coherence Protocols},
+  booktitle = {Proceedings of the 47th Annual International Symposium on Computer Architecture (ISCA)},
+  year      = {2020}
+}
+
+@inproceedings{oswald2022heterogen,
+  author    = {Oswald, Nicolai and Nagarajan, Vijay and Sorin, Daniel J. and Gavrielatos, Vasilis and Olausson, Theo and Carr, Reece},
+  title     = {{HeteroGen}: Automatic Synthesis of Heterogeneous Cache Coherence Protocols},
+  booktitle = {IEEE International Symposium on High-Performance Computer Architecture (HPCA)},
+  pages     = {756--771},
+  year      = {2022},
+  doi       = {10.1109/HPCA53966.2022.00061}
+}
+
+@inproceedings{lefort2026vcxlgen,
+  author    = {Lefort, Anatole and Pritzi, Julian and Carpentieri, Nicol{\`o} and Schall, David and Dittrich, Simon and Chakraborty, Soham and Oswald, Nicolai and Bhatotia, Pramod},
+  title     = {{vCXLGen}: Automated Synthesis and Verification of {CXL} Bridges for Heterogeneous Architectures},
+  booktitle = {Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS)},
+  pages     = {2177--2196},
+  year      = {2026},
+  doi       = {10.1145/3779212.3790245}
+}
+```
+
+</details>
+
+
 ## Quick start
 
 Python 3.10 or newer:
