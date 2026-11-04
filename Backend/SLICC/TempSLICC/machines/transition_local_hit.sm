@@ -1,4 +1,0 @@
-transition($0$, $1$, $2$) {
-  local_$3$Hit;
-  popmandatory_in;
-}

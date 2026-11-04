@@ -1,5 +1,0 @@
-transition($0$, deallocmandatory_in) {
-    // a victim left without telling anybody (a copy the protocol does not track)
-    deallocEntry;
-    a_deallocTBE;
-}

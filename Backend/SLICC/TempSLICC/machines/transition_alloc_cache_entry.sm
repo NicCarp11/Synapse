@@ -1,3 +1,0 @@
-transition($0$, allocCacheEntry) {
-  allocEntry;
-}

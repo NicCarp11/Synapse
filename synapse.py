@@ -27,6 +27,7 @@ import shutil
 import sys
 import tempfile
 import warnings
+from importlib import import_module
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -49,10 +50,7 @@ from Algorithms.Synapse.LocalWrite import LocalWriteError, derive
 from Algorithms.Synapse.Policy import Policy, load_policy
 from Algorithms.Synapse.Synthesis import SynapseDirArchitecture, SynthesisError
 from Algorithms.Synapse.Topology import SLICES_INTERLEAVED, STALL_PARK, Topology, TopologyError, load_topology
-from Backend.SLICC.ModularSLICC.BackendOptions import GEM5_V20, GEM5_V23, LLC_BANKED, LLC_CLUSTER, LLC_RANGE, \
-    BackendOptions
 from Backend.Murphi.Verify import DEFAULT_IMAGE, check, write_model
-from Backend.SLICC.RunSLICCModular import RunSLICCModular
 from Backend.gem5.Setup import write_setup
 from DataObjects.ClassCluster import Cluster
 from DataObjects.ClassLevel import Level
@@ -143,8 +141,22 @@ def merge_global_architectures(levels: List[Level]):
             arch.global_arch = ref
 
 
-def backend_options(topology: Topology) -> BackendOptions:
+def backend_missing() -> bool:
+    """`generate` and `verify` need the SLICC back end, which is installed apart."""
+    try:
+        import_module("Backend.SLICC.RunSLICCModular")
+        import_module("Backend.SLICC.ModularSLICC.BackendOptions")
+    except ImportError as error:
+        print(f"the SLICC back end is not installed or is out of date ({error}): see Backend/SLICC/README.md",
+              file=sys.stderr)
+        return True
+    return False
+
+
+def backend_options(topology: Topology):
     """The choices of the SLICC back end that follow from the topology."""
+    from Backend.SLICC.ModularSLICC.BackendOptions import GEM5_V20, GEM5_V23, LLC_BANKED, LLC_CLUSTER, LLC_RANGE, \
+        BackendOptions
     parent_of_l1 = topology.intermediates[0]
     if parent_of_l1.slices == 1:
         llc_mapping = LLC_CLUSTER
@@ -213,6 +225,7 @@ def synthesize(topology: Topology) -> Tuple[List[Path], List[str], List[Tuple[Li
     machines = [Machine(managers[0].cache), Machine(clients[-1].directory),
                 *(Machine(manager.directory) for manager in managers)]
     system_name = "_".join(protocol.stem for protocol in topology.protocol_chain())
+    from Backend.SLICC.RunSLICCModular import RunSLICCModular
     RunSLICCModular(Cluster(tuple(machines), 'C1', False), system_name, backend_options(topology))
     return sorted(Path("SLICC").resolve().glob("*.sm")), warnings, sizes
 
@@ -256,6 +269,8 @@ def working_directory(keep: Optional[Path]):
 
 
 def cmd_generate(args) -> int:
+    if backend_missing():
+        return 2
     topology = read_topology(args)
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -334,6 +349,8 @@ def remove_previous_output(out: Path):
 
 
 def cmd_verify(args) -> int:
+    if backend_missing():
+        return 2
     topology = read_topology(args)
     # a Local rule assumes one cache per block at its level: no other cache of the top protocol
     top_caches = args.top_caches if args.top_caches is not None else \
