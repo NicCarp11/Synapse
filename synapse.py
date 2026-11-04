@@ -146,6 +146,7 @@ def backend_missing() -> bool:
     try:
         import_module("Backend.SLICC.RunSLICCModular")
         import_module("Backend.SLICC.ModularSLICC.BackendOptions")
+        import_module("Backend.SLICC.ModularSLICC.ModularProxy")
     except ImportError as error:
         print(f"the SLICC back end is not installed or is out of date ({error}): see Backend/SLICC/README.md",
               file=sys.stderr)

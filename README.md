@@ -33,11 +33,12 @@ vCXLGen extended HeteroGen to synthesize and verify CXL bridges. Synapse starts 
 
 **SLICC back end**: Nicolai Oswald and Theo Olausson, The University of Edinburgh. `generate` and `verify`
 use it from the [`slicc` branch of HeteroGen](https://github.com/Errare-humanum-est/HeteroGen/tree/slicc)
-(`Backend/SLICC/README.md`).
+with `patches/slicc-backend.patch` on top (`Backend/SLICC/README.md`).
 
 **New in Synapse:** the decoupled protocol / topology / policy specification (`specs/`) and the synthesis
-built on it (`Algorithms/Synapse/`), the gem5 setup (`Backend/gem5/`), the `synapse.py` frontend, and the
-changes to the inherited modules that these need.
+built on it (`Algorithms/Synapse/`), the proxy controller and gem5 v20 support of the SLICC back end
+(`patches/`), the gem5 setup (`Backend/gem5/`), the `synapse.py` frontend, and the changes to the
+inherited modules that these need.
 
 If you use Synapse, please also cite the work it builds on:
 
@@ -88,6 +89,7 @@ Python 3.10 or newer:
 pip install -r requirements.txt
 git clone --depth 1 -b slicc https://github.com/Errare-humanum-est/HeteroGen ../HeteroGen   # the SLICC back end
 cp -r ../HeteroGen/Backend/SLICC/. Backend/SLICC/
+git apply --whitespace=nowarn patches/slicc-backend.patch
 python synapse.py generate specs/topologies/smp.yaml --out out/smp
 python synapse.py generate specs/topologies/smp.yaml --out out/smp-moesi --set directory.protocol=MOESI
 python synapse.py show specs/topologies/numa.yaml       # the resolved system, nothing generated
@@ -207,6 +209,7 @@ the protocol as any alloy protocol (write-through protocols with `DOSequencer_WT
 | `specs/` | protocols, policies, topologies |
 | `Algorithms/Synapse/` | labels, policies, topology, synthesis (Alg. 1) |
 | `Backend/SLICC/` | where the SLICC back end is installed (its `README.md`) |
+| `patches/` | what Synapse adds to the SLICC back end |
 | `Backend/gem5/` | gem5 setups and build-and-test tool |
 | `Backend/Murphi/` | Murphi model generator (`verify`) |
 | `Algorithms/`, `DataObjects/`, `Parser/`, `Debug/`, `Backend/Common/`, `MurphiLitmusTests/` | protocol parser, the ProtoGen/HieraGen/HeteroGen passes the synthesis builds on, and their support code |
@@ -230,4 +233,5 @@ the protocol as any alloy protocol (write-through protocols with `DOSequencer_WT
 ## License
 
 MIT (`LICENSE`). `third_party/antlr3` is under the BSD license in its files. The SLICC back end is not
-part of this repository and keeps the license of its own.
+part of this repository and keeps the license of its own, and so do the files that
+`patches/slicc-backend.patch` adds to it.

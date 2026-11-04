@@ -1,0 +1,1910 @@
+# What Synapse adds to the SLICC back end on the slicc branch of HeteroGen
+# (https://github.com/Errare-humanum-est/HeteroGen/tree/slicc): the proxy controller, gem5 v20
+# support and the entry point that uses them.
+#
+# Copyright (c) 2026 Systems Research Group @ TUM
+#
+# To apply it, from the root of this repository (Backend/SLICC/README.md):
+#     git apply --whitespace=nowarn patches/slicc-backend.patch
+
+diff --git a/Backend/SLICC/ModularSLICC/ModularProxy.py b/Backend/SLICC/ModularSLICC/ModularProxy.py
+new file mode 100644
+index 0000000..caad06d
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/ModularProxy.py
+@@ -0,0 +1,71 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC.common import Util
++from Backend.SLICC.ModularSLICC.proxy.GenProxyBase import GenProxyBase
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++from DataObjects.ClassCluster import Cluster
++
++
++class ModularProxy(GenProxyBase):
++    TemplateDir = "TempSLICC/machines"
++
++    def __init__(self, cluster: Cluster, arch: FlatArchitecture, file_name: str, id_mapping: dict[str, str], cache_id: None | int = None):
++        GenProxyBase.__init__(self, self.TemplateDir)
++
++        file_name = file_name.split(".")[0] + f"_proxy{cache_id or ''}_synth.sm"
++
++        out_ports = Util.get_out_ports(arch, True)
++        in_ports = Util.get_in_ports(arch, True)
++
++        machine_id = id_mapping[str(arch)]
++        parked = Util.parked_ports(cluster, arch, in_ports)
++        assert len(parked) <= 1, "stall_and_wait keeps one queue per in_port rank: give the ports a rank"
++
++
++        with open(file_name, "w") as slicc_file:
++            # Write header
++            slicc_file.write(self.gen_proxy_header_str(arch, id_mapping))
++            # Write (indented) body
++            slicc_file.write(
++                self.fix_tabs(
++                    ''.join([
++                            self.gen_proxy_state_decl_str(arch, machine_id) + self.nl,
++                            self.gen_proxy_events_str(arch, in_ports) + self.nl,
++                            self.gen_proxy_struct_str(arch) + self.nl,
++                            self.gen_proxy_tbe_str(arch, machine_id) + self.nl,
++                            self.gen_proxy_static_fns_str(arch, machine_id, parked) + self.nl,
++                            self.gen_proxy_out_ports_str(out_ports) + self.nl,
++                            self.gen_proxy_in_ports_str(cluster, arch, in_ports, out_ports, id_mapping) + self.nl,
++                            self.gen_proxy_actions_str(cluster, arch, in_ports, out_ports, parked) + self.nl,
++                            self.gen_proxy_transitions_str(arch, in_ports, parked),
++                        ]),
++                    1
++                )
++                + self.nl
++            )
++            # Write footer / close the controller
++            slicc_file.write(self.gen_proxy_footer_str())
+diff --git a/Backend/SLICC/ModularSLICC/common/Gem5V20.py b/Backend/SLICC/ModularSLICC/common/Gem5V20.py
+new file mode 100644
+index 0000000..0fef542
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/common/Gem5V20.py
+@@ -0,0 +1,55 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++#  SLICC syntax of gem5 v20 (alloy-gem5, Synapse S4 artifact), for BackendOptions.gem5 == GEM5_V20.
++#
++#  The templates that differ in meaning (memory interface, sequencer, request types, functional
++#  accesses, the message types alloy needs) have their own v20 copy in TempSLICC/<dir>_v20. What is
++#  left is syntax that SLICC v20 does not accept and that is rewritten in the generated text:
++#    is_valid(<cache>.lookup(<addr>))   ->  <cache>.isTagPresent(<addr>)
++#    is_valid(getEntry(<addr>))         ->  hasEntry(<addr>)   (TempSLICC/machines_v20/*_static_functions.sm)
++#  since `is_valid`/`is_invalid` only take a variable in SLICC v20 (an expression in v23). Both
++#  forms test the same thing: CacheMemory::lookup returns NULL when the tag is not present.
++
++import re
++from pathlib import Path
++
++_LOOKUP = re.compile(r"is_(in)?valid\((\w+)\.lookup\((\w+)\)\)")
++_GET_ENTRY = re.compile(r"is_(in)?valid\(getEntry\((\w+)\)\)")
++
++
++def _negate(match: re.Match, positive: str) -> str:
++    return f"({positive} == false)" if match.group(1) else positive
++
++
++def to_v20(text: str) -> str:
++    text = _LOOKUP.sub(lambda m: _negate(m, f"{m.group(2)}.isTagPresent({m.group(3)})"), text)
++    return _GET_ENTRY.sub(lambda m: _negate(m, f"hasEntry({m.group(2)})"), text)
++
++
++def rewrite_files(paths) -> None:
++    for path in map(Path, paths):
++        path.write_text(to_v20(path.read_text()))
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyActions.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyActions.py
+new file mode 100644
+index 0000000..e99aae0
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyActions.py
+@@ -0,0 +1,127 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++import re
++from collections import OrderedDict
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineActions import GenMachineActions
++from Backend.SLICC.ModularSLICC.common.GenMachineStruct import GenMachineStruct
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++from DataObjects.ClassCluster import Cluster
++
++
++class GenProxyActions(TemplateHandler):
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++        self.generated_action_shorthands = set()
++
++    def gen_proxy_actions_str(self, cluster: Cluster, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]', out_ports: 'OrderedDict[str, str]',
++                              parked: 'dict[str, list[str]]' = None) -> str:
++
++        #                                                 )
++        #                           )
++
++        port_actions = [
++            # GenMachineActions.gen_pop_action(
++            #     self, "mandatory_in", self._gen_queue_pop_action_shorthand("mandatory_in")),
++            # GenMachineActions.gen_recycle_action(
++            #     self, "mandatory_in", self._gen_recycle_action_shorthand("mandatory_in")),
++        ]
++        for port_name in sorted(in_ports.values()):
++            port_actions.append(
++                GenMachineActions.gen_pop_action(self, port_name, self._gen_queue_pop_action_shorthand(port_name)))
++            if parked and port_name in parked:
++                # option park_requests: the stalled messages of this port wait out of the queue
++                port_actions.append(self.string_repl_keys(self.open_template("action_park_port.sm"),
++                                                          [port_name, self._gen_recycle_action_shorthand(port_name)]))
++                continue
++            port_actions.append(
++                GenMachineActions.gen_recycle_action(self, port_name, self._gen_recycle_action_shorthand(port_name)))
++        if parked:
++            port_actions.append(self.open_template("action_wake_parked.sm"))
++
++
++        return "//" + __name__ + self.nl \
++               + self.open_template("action_alloc_entry.sm") + self.nl \
++               + self._gen_dealloc_entry_action(arch) + self.nl \
++               + self.open_template("action_copy_entryTBE.sm") + self.nl \
++               + self._gen_alloc_tbe_action(arch) + self.nl \
++               + self.open_template("action_dealloc_tbe.sm") + self.nl \
++               + (self.nl * 2).join(port_actions) + (self.nl * 2) \
++               + GenMachineActions.gen_empty_action(self) + self.nl
++
++    def _gen_dealloc_entry_action(self, arch: FlatArchitecture) -> str:
++        action = self.open_template("action_dealloc_entry_proxy.sm")
++        if hasattr(arch, "exclusive_placement") and arch.exclusive_placement() is not None:
++            # exclusive policy: the entry may be in the tags (GenProxyStaticFns)
++            anchor = "      unset_cache_entry();"
++            assert anchor in action, "proxy template changed: deallocEntry"
++            action = action.replace(anchor, "      if (tags.isTagPresent(address)) {\n"
++                                            "              tags.deallocate(address);\n"
++                                            "      }\n" + anchor, 1)
++        return action
++
++    def _gen_alloc_tbe_action(self, arch: FlatArchitecture) -> str:
++        # Same fields as GenProxyTBE: every integer machine variable lives in the TBE. They are reset
++        # explicitly so the ack counters of a new transaction never depend on the TBE defaults.
++        inits = [f"check_allocate(TBEs){self.sem}", f"TBEs.allocate(address){self.sem}",
++                 f"set_tbe(TBEs[address]){self.sem}", f"tbe.dirty := false{self.sem}"]
++        for var_name, variable in arch.machine.variables.items():
++            if variable.getText() == "INT_":
++                res = GenMachineStruct._gen_int(variable, arch)
++                field = re.match(r"\s*int\s+(\w+)", res).group(1)
++                inits.append(f"tbe.{field} := 0{self.sem}")
++        body = self.nl.join(self.tab + line for line in inits)
++        return f'action(a_allocTBE, "aTBE", desc="Allocate TBE entry.") {{{self.nl}{body}{self.nl}}}'
++
++    def _gen_operation_action_shorthand(self, start_state: str, end_state: str) -> str:
++        action_shorthand = f'"{start_state[0]}{end_state[0]}0"'
++        i = 0
++        while action_shorthand in self.generated_action_shorthands:
++            i += 1
++            action_shorthand = action_shorthand[: -2] + str(i) + '"'
++        self.generated_action_shorthands.add(action_shorthand)
++        return action_shorthand
++
++    def _gen_queue_pop_action_shorthand(self, port_name: str) -> str:
++        action_shorthand = f'"p{port_name}0"'
++        i = 0
++        while action_shorthand in self.generated_action_shorthands:
++            i += 1
++            action_shorthand = action_shorthand[: -2] + str(i) + '"'
++        self.generated_action_shorthands.add(action_shorthand)
++        return action_shorthand
++
++    def _gen_recycle_action_shorthand(self, port_name: str) -> str:
++        action_shorthand = f'"r{port_name}0"'
++        i = 0
++        while action_shorthand in self.generated_action_shorthands:
++            i += 1
++            action_shorthand = action_shorthand[: -2] + str(i) + '"'
++        self.generated_action_shorthands.add(action_shorthand)
++        return action_shorthand
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyBase.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyBase.py
+new file mode 100644
+index 0000000..2ddbe82
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyBase.py
+@@ -0,0 +1,65 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC.proxy.GenProxyActions import GenProxyActions
++from Backend.SLICC.ModularSLICC.proxy.GenProxyEvents import GenProxyEvents
++from Backend.SLICC.ModularSLICC.proxy.GenProxyFooter import GenProxyFooter
++from Backend.SLICC.ModularSLICC.proxy.GenProxyHeader import GenProxyHeader
++from Backend.SLICC.ModularSLICC.proxy.GenProxyInPorts import GenProxyInPorts
++from Backend.SLICC.ModularSLICC.proxy.GenProxyOutPorts import GenProxyOutPorts
++from Backend.SLICC.ModularSLICC.proxy.GenProxyStateDecl import GenProxyStateDecl
++from Backend.SLICC.ModularSLICC.proxy.GenProxyStaticFns import GenProxyStaticFns
++from Backend.SLICC.ModularSLICC.proxy.GenProxyStruct import GenProxyStruct
++from Backend.SLICC.ModularSLICC.proxy.GenProxyTBE import GenProxyTBE
++from Backend.SLICC.ModularSLICC.proxy.GenProxyTransitions import GenProxyTransitions
++from Debug.Monitor.ClassDebug import Debug
++
++
++class GenProxyBase(
++        Debug,
++        GenProxyHeader,
++        GenProxyFooter,
++        GenProxyStateDecl,
++        GenProxyActions,
++        GenProxyEvents,
++        GenProxyInPorts,
++        GenProxyOutPorts,
++        GenProxyStaticFns,
++        GenProxyStruct,
++        GenProxyTBE,
++        GenProxyTransitions):
++
++    def __init__(self, template_dir):
++        Debug.__init__(self, debug_enabled=True)
++        GenProxyHeader.__init__(self, template_dir)
++        GenProxyFooter.__init__(self, template_dir)
++        GenProxyStateDecl.__init__(self, template_dir)
++        GenProxyActions.__init__(self, template_dir)
++        GenProxyOutPorts.__init__(self, template_dir)
++        GenProxyStaticFns.__init__(self, template_dir)
++        GenProxyStruct.__init__(self, template_dir)
++        GenProxyTBE.__init__(self, template_dir)
++        GenProxyTransitions.__init__(self, template_dir)
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyEvents.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyEvents.py
+new file mode 100644
+index 0000000..be4b925
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyEvents.py
+@@ -0,0 +1,82 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from collections import OrderedDict
++
++from typing import List, Dict, Tuple
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineEvents import GenMachineEvents
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++
++
++class GenProxyEvents(TemplateHandler):
++    template_file = "event_enumeration.sm"
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_events_str(self, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]') -> str:
++
++        const_str = "//" + __name__ + self.nl
++        event_strs = []
++        for port in sorted(in_ports.values()):
++            # event_strs.extend(
++            #     self.gen_remote_hit_events(port, Util.get_remote_hit_events_port(arch, port)))
++            event_strs.append(f"dealloc{port}, desc=\"Event indicating the cache line + tbe should be deallocated "
++                              f"following a message received on {port}.\"{self.sem}")
++            event_strs.append(GenMachineEvents.gen_stall_event(self, port))
++
++        event_strs.append(GenMachineEvents.gen_cache_alloc_event(self))
++        event_strs.append(GenMachineEvents.gen_tbe_alloc_event(self))
++        event_strs.append(GenMachineEvents.gen_tbe_dealloc_event(self))
++        event_strs.append(GenMachineEvents.silent_evict_event(self))
++        event_strs.append(GenMachineEvents.gen_progress_event(self))
++
++        events_str = self.nl.join(event_strs)
++
++        const_str += self.string_repl_keys(self.open_template(GenProxyEvents.template_file),
++                                           ["Cache", self.add_tabs(events_str, 1)]
++                                           )
++
++        return const_str + self.nl
++
++    def gen_local_hit_events(self, hit_map: Dict[Tuple[str, str], Tuple[str, str]]) -> List[str]:
++        event_strs = []
++        for (access, start_state), (end_state, event_name) in sorted(hit_map.items()):
++            event_strs.append(
++                f"{event_name}, desc=\"{start_state}->{end_state} upon local {access} hit.\"{self.sem}")
++
++        return event_strs
++
++    def gen_remote_hit_events(self, port: str, hit_map: Dict[Tuple[str, str], str]) -> List[str]:
++        event_strs = []
++        for (access, end_state), event_name in sorted(hit_map.items()):
++            event_strs.append(
++                f"{event_name}, desc=\"Remote {access} hit ending in state {end_state}. Should pop {port}.\"{self.sem}"
++            )
++
++        return event_strs
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyFooter.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyFooter.py
+new file mode 100644
+index 0000000..c519713
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyFooter.py
+@@ -0,0 +1,36 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++
++
++class GenProxyFooter(TemplateHandler):
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_footer_str(self):
++        return f"}}{self.nl}// EOF<proxy>{self.nl}"
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyHeader.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyHeader.py
+new file mode 100644
+index 0000000..529df0c
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyHeader.py
+@@ -0,0 +1,51 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineHeader import GenMachineHeader
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++
++
++class GenProxyHeader(TemplateHandler):
++
++    template_file = "proxy_header.sm"
++
++    template_file_2 = "proxy_header_L2private.sm"
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_header_str(self, arch: FlatArchitecture, id_mapping: dict[str, str]):
++        const_str = "//" + __name__ + self.nl
++        list(id_mapping.keys()).index(arch.arch_name)
++        keys = list(id_mapping.keys())
++        index = keys.index(arch.arch_name)
++        if index < len(keys) - 2:
++            const_str += GenMachineHeader.gen_machine_header_str(self, arch, id_mapping, GenProxyHeader.template_file_2, False)
++        else:
++            const_str += GenMachineHeader.gen_machine_header_str(self, arch, id_mapping, GenProxyHeader.template_file, False)
++
++        return const_str + self.nl
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyInPorts.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyInPorts.py
+new file mode 100644
+index 0000000..4ea671c
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyInPorts.py
+@@ -0,0 +1,136 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from collections import OrderedDict
++
++
++from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common import Util
++from Backend.SLICC.ModularSLICC.common.GenMachineInPorts import GenMachineInPorts
++from Backend.SLICC.ModularSLICC.common.GenSLICCTree import GenSLICCTree
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++from DataObjects.ClassCluster import Cluster
++from DataObjects.ClassMultiDict import MultiDict
++
++
++class GenProxyInPorts(TemplateHandler):
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++        self.all_message_names = set()
++
++    def gen_proxy_in_ports_str(
++            self,
++            cluster: Cluster,
++            arch: FlatArchitecture,
++            in_ports: 'OrderedDict[str, str]',
++            out_ports: 'OrderedDict[str, str]',
++            machine_mappings: dict[str, str],
++    ) -> str:
++        assert isinstance(arch, HHDirArchitecture)
++        alloc_states = self._find_alloc_msgs(arch)
++        # exclusive policy: a block coming back from the tags to the data cache needs a free way too
++        placement = arch.exclusive_placement() if hasattr(arch, "exclusive_placement") else None
++        if placement is not None:
++            alloc_states |= placement[2]
++        port_map = Util.get_msg_port_mapping(cluster)
++        alloc_ports = dict()
++        for port, msgs in port_map.items():
++            guards = []
++            for s, m in sorted(alloc_states):
++                if m in msgs:
++                    guards.append(f"(st == State:{s} && in_msg.Type == CoherenceMessageType:{m})")
++            if len(guards) > 0:
++                block = self.string_repl_keys(self.open_template("proxy_evict_block.sm"),
++                            [" || ".join(guards), self._gen_evict_in_port(cluster, arch, out_ports, machine_mappings, f"{port}from_in")
++                                                                        .encode('unicode_escape')
++                                                                        .decode("utf-8")])
++                if placement is not None:
++                    # the entry may be in the tags: what matters is a way in the data cache
++                    block = block.replace("is_invalid(getEntry(LineAddress)) && cache.cacheAvail(LineAddress) == false",
++                                          "cache.isTagPresent(LineAddress) == false && cache.cacheAvail(LineAddress) == false", 1)
++                alloc_ports[port] = self.add_tabs(block, 3)
++        return "//" + __name__ + self.nl \
++               + GenMachineInPorts.gen_machine_in_ports(
++                    self, cluster, arch, True, "Cache", in_ports, out_ports, machine_mappings, evict_code=alloc_ports) \
++               + self.nl
++
++    def _find_alloc_msgs(self, arch: HHDirArchitecture) -> set[(str, str)]:
++        # (state, message) pairs whose handler allocates the cache entry and may need a victim
++        msgs = set()
++        for transition in arch.get_architecture_transitions():
++            if Util.proxy_entry_alloc(arch, transition)[0]:
++                msgs.add((str(transition.start_state), str(transition.guard)))
++        return msgs
++
++
++    def _gen_evict_in_port(self, cluster: Cluster, arch: FlatArchitecture, out_ports: 'OrderedDict[str, str]', machine_mappings: dict[str, str], port_name: str) -> str:
++
++        evicts = [s for s in arch.get_architecture_transitions() if str(s.guard) == "evict"]
++
++        evicts_by_start = MultiDict()
++        for e in evicts:
++            evicts_by_start[str(e.start_state)] = e
++
++        evict_handler = self._gen_access_str(cluster, arch, evicts_by_start, out_ports, machine_mappings, indent_level=2, port_name=port_name)
++
++        return evict_handler
++
++    def _gen_access_str(
++            self,
++            cluster: Cluster,
++            arch: FlatArchitecture,
++            transition_map: MultiDict,
++            out_ports: 'OrderedDict[str, str]',
++            machine_mappings: dict[str, str],
++            indent_level: int,
++            port_name: str
++    ) -> str:
++
++        transitions_strs = []
++
++        for state_name in sorted(transition_map.keys()):
++            transitions = sorted(transition_map[state_name], key=GenMachineInPorts.op_plan)
++            slicc_tree_gen = GenSLICCTree(cluster, arch, True, port_name, out_ports,
++                                          machine_mappings, allow_port_popping=False, set_final_state=True)
++
++            op_str = ""
++
++            op_str += slicc_tree_gen.gen_slicc_tree(transitions)
++
++            # Also add a dummy event to make sure the simulation makes progress
++            op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
++
++            op_str = self.add_tabs(op_str, 1)
++
++            transition_str = f"if (st == State:{state_name}) {{{self.nl}{op_str}{self.nl}}}"
++            transitions_strs.append(transition_str)
++
++        return self.add_tabs(" else ".join(transitions_strs)
++                             + f" else {{{self.nl}{self.tab}"
++                             + f"{Util.gen_recycle_str(self, True, port_name)}{self.nl}}}",
++                             indent_level)
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyOutPorts.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyOutPorts.py
+new file mode 100644
+index 0000000..4eb5274
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyOutPorts.py
+@@ -0,0 +1,42 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from collections import OrderedDict
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineOutPorts import GenMachineOutPorts
++
++
++class GenProxyOutPorts(TemplateHandler):
++    template_file = "out_port.sm"
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_out_ports_str(self, out_ports: 'OrderedDict[str, str]') -> str:
++        const_str = "//" + __name__ + self.nl
++
++        const_str += GenMachineOutPorts.gen_machine_out_ports(self, out_ports)
++        return const_str + self.nl
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyStateDecl.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyStateDecl.py
+new file mode 100644
+index 0000000..af5da7d
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyStateDecl.py
+@@ -0,0 +1,44 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineStateDecl import GenMachineStateDecl
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++
++class GenProxyStateDecl(TemplateHandler):
++    template_file = "state_declaration.sm"
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_state_decl_str(self, arch: FlatArchitecture, machine_id: str) -> str:
++        const_str = "//" + __name__ + self.nl
++        state_declaration_body = GenMachineStateDecl.gen_machine_state_decl_body_str(self, arch, True)
++        init_state = str(arch.init_state)
++        const_str += self.string_repl_keys(self.open_template(GenProxyStateDecl.template_file),
++                                           [machine_id, init_state, state_declaration_body]
++                                           )
++        return const_str + self.nl
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyStaticFns.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyStaticFns.py
+new file mode 100644
+index 0000000..7732936
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyStaticFns.py
+@@ -0,0 +1,124 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++import re
++
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common import Util
++from Backend.SLICC.ModularSLICC.common.GenMachineStruct import GenMachineStruct
++
++
++class GenProxyStaticFns(TemplateHandler):
++    template_file = "proxy_static_functions.sm"
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_static_fns_str(self, arch: FlatArchitecture, machine_id: str,
++                                 parked: 'dict[str, list[str]]' = None) -> str:
++        const_str = "//" + __name__ + self.nl
++        fns = self.string_repl_keys(self.open_template(GenProxyStaticFns.template_file),
++                                    [str(arch.init_state),
++                                     Util.get_active_cache_line(arch),
++                                     machine_id,
++                                     "ProxyState"
++                                     ]
++                                    )
++        placement = arch.exclusive_placement() if hasattr(arch, "exclusive_placement") else None
++        if placement is not None:
++            fns = self._exclusive_fns(fns, arch, machine_id, placement)
++        if parked:
++            fns = self._parked_fns(fns, parked)
++        if Util.partial_messages(arch.global_arch):
++            fns += self.open_template("partial_data_functions.sm")
++        const_str += fns
++        return const_str + self.nl
++
++    # Back-end option park_requests (Util.parked_ports). setState only notes the block: waking its
++    # messages there would put them, older, in front of the message the in_port is handling, which
++    # is popped afterwards.
++    def _parked_fns(self, fns: str, parked: 'dict[str, list[str]]') -> str:
++        nl = self.nl
++        states = sorted({state for served in parked.values() for state in served})
++        cond = (" ||" + nl + "    ").join(f"state == State:{state}" for state in states)
++        decls = self.string_repl_keys(self.open_template("parked_functions.sm"), [", ".join(sorted(parked)), cond])
++        set_state = "void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {" + nl
++        set_state_begin = "  if (is_valid(tbe)) {" + nl + "    tbe.TBEState := state;" + nl
++        assert fns.count(set_state) == 1 and fns.count(set_state_begin) == 1, "proxy template changed: setState"
++        note = ("  if (state != getState(tbe, cache_entry, LineAddress) && servesParked(state)) {" + nl +
++                "    // one block changes state per transition" + nl +
++                "    assert(wakeUpPending == false || wakeUpAddr == LineAddress);" + nl +
++                "    wakeUpPending := true;" + nl +
++                "    wakeUpAddr := LineAddress;" + nl +
++                "  }" + nl)
++        return fns.replace(set_state, decls + set_state, 1).replace(set_state_begin, note + set_state_begin, 1)
++
++    def _exclusive_fns(self, fns: str, arch: FlatArchitecture, machine_id: str, placement) -> str:
++        tag_states, data_states, _ = placement
++        fields = ["ProxyState"] + re.findall(r"^\s*\w+\s+(\w+)\s*[,;]", GenMachineStruct.gen_machine_struct_body_str(self, arch), re.M)
++        nl, tab = self.nl, self.tab
++        get_entry = ('  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {' + nl +
++                     '    return static_cast(Entry, "pointer", cache.lookup(LineAddress));' + nl + '  }')
++        assert get_entry in fns, "proxy template changed: getEntry"
++        decls = (f'structure(PerfectCacheMemory, external="yes") {{{nl}'
++                 f'{tab}void allocate(Addr);{nl}{tab}void deallocate(Addr);{nl}'
++                 f'{tab}Entry lookup(Addr);{nl}{tab}bool isTagPresent(Addr);{nl}}}{nl}{nl}'
++                 f'PerfectCacheMemory tags, template="<{machine_id}_Entry>";{nl}{nl}')
++        new_get_entry = (f'Entry getEntry(Addr LineAddress), return_by_pointer="yes" {{{nl}'
++                         f'{tab}if (tags.isTagPresent(LineAddress)) {{{nl}'
++                         f'{tab}{tab}return tags.lookup(LineAddress);{nl}{tab}}}{nl}'
++                         f'{tab}return static_cast(Entry, "pointer", cache.lookup(LineAddress));{nl}}}{nl}{nl}')
++
++        def membership(name, states):
++            cond = " || ".join(f"state == State:{s}" for s in states) or "false"
++            return f"bool {name}(State state) {{{nl}{tab}return {cond};{nl}}}{nl}{nl}"
++
++        copy = "".join(f"{tab}to.{f} := from.{f};{nl}" for f in fields)
++        moves = (f"void moveToTags(Addr LineAddress) {{{nl}"
++                 f'{tab}Entry from := static_cast(Entry, "pointer", cache.lookup(LineAddress));{nl}'
++                 f"{tab}tags.allocate(LineAddress);{nl}"
++                 f"{tab}Entry to := tags.lookup(LineAddress);{nl}{copy}"
++                 f"{tab}cache.deallocate(LineAddress);{nl}"
++                 f'{tab}DPRINTF(RubySlicc, "tags <- cache (addr: %#x)\\n", LineAddress);{nl}}}{nl}{nl}'
++                 f"void moveToCache(Addr LineAddress) {{{nl}"
++                 f"{tab}Entry from := tags.lookup(LineAddress);{nl}"
++                 f"{tab}cache.allocate(LineAddress, new Entry);{nl}"
++                 f'{tab}Entry to := static_cast(Entry, "pointer", cache.lookup(LineAddress));{nl}{copy}'
++                 f"{tab}tags.deallocate(LineAddress);{nl}"
++                 f'{tab}DPRINTF(RubySlicc, "cache <- tags (addr: %#x)\\n", LineAddress);{nl}}}{nl}{nl}'
++                 f"void placeEntry(Addr LineAddress, State state) {{{nl}"
++                 f"{tab}if (tagState(state) && cache.isTagPresent(LineAddress)) {{{nl}"
++                 f"{tab}{tab}moveToTags(LineAddress);{nl}"
++                 f"{tab}}} else if (dataState(state) && tags.isTagPresent(LineAddress) && cache.cacheAvail(LineAddress)) {{{nl}"
++                 f"{tab}{tab}moveToCache(LineAddress);{nl}{tab}}}{nl}}}{nl}{nl}")
++        fns = fns.replace(get_entry, decls + new_get_entry + membership("tagState", tag_states)
++                          + membership("dataState", data_states) + moves)
++        set_state_end = "  if (is_valid(cache_entry)) {" + nl + "    cache_entry.ProxyState := state;" + nl + "  }" + nl + "}"
++        assert set_state_end in fns, "proxy template changed: setState"
++        fns = fns.replace(set_state_end, "  if (is_valid(cache_entry)) {" + nl + "    cache_entry.ProxyState := state;" + nl +
++                          "    placeEntry(LineAddress, state);" + nl + "  }" + nl + "}", 1)
++        return fns
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyStruct.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyStruct.py
+new file mode 100644
+index 0000000..f851243
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyStruct.py
+@@ -0,0 +1,48 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineStruct import GenMachineStruct
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++
++
++class GenProxyStruct(TemplateHandler):
++    template_file = "entry_structure.sm"
++
++    # all the variables of the machine are in the Entry, none in the TBE
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_struct_str(self, arch: FlatArchitecture) -> str:
++        # In general only the members of that come from the directory should be in here
++        #  however there seems to be no way to determine where variables came from
++        const_str = "//" + __name__ + self.nl
++        body = GenMachineStruct.gen_machine_struct_body_str(self, arch)
++        const_str += self.string_repl_keys(self.open_template(GenProxyStruct.template_file),
++                                           ["", "Proxy", body]
++                                           )
++        return const_str + self.nl
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyTBE.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyTBE.py
+new file mode 100644
+index 0000000..5369649
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyTBE.py
+@@ -0,0 +1,51 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++from Backend.SLICC.ModularSLICC import SLICCTokens
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common.GenMachineStruct import GenMachineStruct
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++
++
++class GenProxyTBE(TemplateHandler,):
++    template_file = "placeholder_tbe_structure.sm"
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_tbe_str(self, arch: FlatArchitecture, machine_id: str) -> str:
++        const_str = "//" + __name__ + self.nl
++        body_strs = []
++        for var_name, variable in arch.machine.variables.items():
++            # For caches, put everything except the actual cache line in the TBE
++            method_fct = SLICCTokens.data_type_map.get(variable.getText(), '_pass_node')
++            method = getattr(GenMachineStruct, method_fct)
++            res = method(variable, arch)
++            if res and (variable.getText() == "INT_")  or (variable.getText() =="DATA_"):
++                body_strs.append(self.tab + res)
++        const_str += self.string_repl_keys(self.open_template(GenProxyTBE.template_file),
++                                           [machine_id, self.nl.join(body_strs)])
++        return const_str + self.nl
+diff --git a/Backend/SLICC/ModularSLICC/proxy/GenProxyTransitions.py b/Backend/SLICC/ModularSLICC/proxy/GenProxyTransitions.py
+new file mode 100644
+index 0000000..4aa9ad1
+--- /dev/null
++++ b/Backend/SLICC/ModularSLICC/proxy/GenProxyTransitions.py
+@@ -0,0 +1,110 @@
++#  Copyright (c) 2026.  Systems Research Group @ TUM
++#  All rights reserved.
++#
++#  Redistribution and use in source and binary forms, with or without
++#  modification, are permitted provided that the following conditions are
++#  met: redistributions of source code must retain the above copyright
++#  notice, this list of conditions and the following disclaimer;
++#  redistributions in binary form must reproduce the above copyright
++#  notice, this list of conditions and the following disclaimer in the
++#  documentation and/or other materials provided with the distribution;
++#  neither the name of the copyright holders nor the names of its
++#  contributors may be used to endorse or promote products derived from
++#  this software without specific prior written permission.
++#
++#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++import re
++from collections import OrderedDict
++
++from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
++from Backend.SLICC.ModularSLICC.common import Util
++from Backend.SLICC.ModularSLICC.common.GenMachineActions import GenMachineActions
++from Backend.SLICC.ModularSLICC.common.GenMachineTransitions import GenMachineTransitions
++from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
++
++
++class GenProxyTransitions(TemplateHandler):
++
++    def __init__(self, handler_dir: str):
++        TemplateHandler.__init__(self, handler_dir)
++
++    def gen_proxy_transitions_str(self, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]',
++                                  parked: 'dict[str, list[str]]' = None) -> str:
++
++        invalid_states = sorted({str(state) for state in Util.get_invalid_states(arch)})
++        invalid_states_str = f"{{{', '.join(invalid_states)}}}"
++        all_states = sorted({str(state) for state in arch.get_architecture_states_verified()})
++        all_states_str = f"{{{', '.join(all_states)}}}"
++
++        dealloc_trans_strs = []
++        stall_strs = []
++        for port_name in sorted(in_ports.values()):
++            dealloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_dealloc_entry.sm"),
++                                                            [invalid_states_str,
++                                                             port_name,
++                                                             GenMachineActions.get_queue_pop_action_name(port_name)
++                                                             ]
++                                                            )
++                                      )
++            stall_strs.append(GenMachineTransitions.gen_stall_transition(self, all_states, port_name))
++
++        dealloc_trans_str = (self.nl * 2).join(dealloc_trans_strs)
++        stall_str = (self.nl * 2).join(stall_strs)
++
++        # alloc_trans_strs = []
++        # next_states = sorted({str(state) for state in Util.get_states_following_invalid_states(arch)})
++        #for next_state in next_states:
++        #    for state in invalid_states:
++        #        alloc_trans_strs.append(self.string_repl_keys(self.open_template("transition_alloc_entry.sm"),
++        #                                                      [state,
++        #                                                       next_state,
++        #                                                       GenMachineActions.get_operation_action_name(state,
++        #                                                                                                 next_state
++        #                                                                                                 ),
++        #                                                       ]
++        #                                                      )
++        #                                )
++        # alloc_trans_str = (self.nl * 2).join(alloc_trans_strs)
++
++
++        evict_states = sorted(Util.proxy_evict_states(arch))
++        evict_trans_str = ""
++        if evict_states:
++            evict_trans_str = self.string_repl_keys(self.open_template("transition_silent_evict.sm"),
++                                                    [f"{{{', '.join(evict_states)}}}"]) + (self.nl * 2)
++
++        before_stalls = dealloc_trans_str + (self.nl * 2) \
++               + evict_trans_str
++        after_stalls = self.string_repl_keys(self.open_template("transition_alloc_cache_entry.sm"), [all_states_str]) \
++               + (self.nl * 2) \
++               + self.string_repl_keys(self.open_template("transition_alloc_tbe.sm"), [all_states_str]) \
++               + (self.nl * 2) \
++               + self.string_repl_keys(self.open_template("transition_dealloc_tbe.sm"), [all_states_str]) \
++               + (self.nl * 2)  \
++               + GenMachineTransitions.gen_progress_transition(
++                    self, map(str, arch.get_architecture_states_verified())) + self.nl
++        if parked:
++            # option park_requests: every transition but the stalls ends by waking the messages
++            # parked for the block whose state the in_port has just changed (setState)
++            before_stalls, after_stalls = (self._wake_parked(trans) for trans in (before_stalls, after_stalls))
++        return "//" + __name__ + self.nl \
++               + before_stalls \
++               + stall_str + (self.nl * 2) \
++               + after_stalls
++
++    @staticmethod
++    def _wake_parked(transitions: str) -> str:
++        woken = re.sub(r"^(\s*)(\S[^\n]*;)\n\}", r"\1\2\n\1wakeUpParked;\n}", transitions, flags=re.M)
++        assert woken.count("wakeUpParked;") == woken.count("transition("), "proxy transition templates changed"
++        return woken
+diff --git a/Backend/SLICC/RunSLICCModular.py b/Backend/SLICC/RunSLICCModular.py
+index 37b45ac..329b44b 100644
+--- a/Backend/SLICC/RunSLICCModular.py
++++ b/Backend/SLICC/RunSLICCModular.py
+@@ -30,7 +30,6 @@
+ #
+ 
+ import os
+-from time import sleep
+ 
+ from DataObjects.ClassCluster import Cluster
+ from Debug.Monitor.MakeDir import make_dir
+@@ -38,31 +37,46 @@ from Backend.SLICC.ModularSLICC.ModularMsg import ModularMsg
+ from Backend.SLICC.ModularSLICC.ModularDir import ModularDir
+ from Backend.SLICC.ModularSLICC.ModularCache import ModularCache
+ 
+-from Debug.Monitor.ClassDebug import Debug
++import glob
++from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
++from Backend.SLICC.ModularSLICC.ModularProxy import ModularProxy
++from Parser.DataTypes.ClassProtoMachine import ProtoMachine
++from Backend.SLICC.ModularSLICC.BackendOptions import GEM5_V20, OPTIONS, BackendOptions
++from Backend.SLICC.ModularSLICC.common import Gem5V20
+ 
+-sleep(0.05)
+ 
+-
+-def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
++def RunSLICCModular(cluster: Cluster, file_name: str, options: BackendOptions = None) -> None:
+     path = os.getcwd()
++    # topology-dependent choices of the back end (BackendOptions); defaults otherwise
++    for name, value in vars(options or BackendOptions()).items():
++        setattr(OPTIONS, name, value)
+ 
+     make_dir("SLICC")
+ 
+-    ModularMsg(cluster, file_name)
++    (arch,) = cluster.get_global_architectures()
++
++    ModularMsg(arch, file_name)
++
++    directories = cluster.get_machine_architectures_by_type(ProtoMachine.k_dir)
++    proxies = [cache for cache in directories if isinstance(cache, HHDirArchitecture)]
++    directory, = [dir for dir in directories if not isinstance(dir, HHDirArchitecture)]
++    caches = cluster.get_machine_architectures_by_type(ProtoMachine.k_cache)
++
++    machine_ids = {}
++    for idx, cntrl in enumerate([*sorted(caches, key=str), *sorted(proxies, key=str)], start=1):
++        machine_ids[str(cntrl)] = f"L{idx}Cache"
+ 
+-    file_name = "SLICC_TEST"
++    machine_ids[str(directory)] = "Directory"
++    ModularDir(cluster, directory, file_name, machine_ids)
+ 
+-    # There must not exist more than one directory
+-    dir_list = []
+-    for arch in cluster.get_machine_architectures():
+-        if arch.machine.check_dir():
+-            ModularDir(cluster, arch, file_name)
++    for idx, cache in enumerate(sorted(caches, key=str)):
++        ModularCache(cluster, cache, file_name, machine_ids, (idx + 1) if len(caches) > 1 else None)
+ 
+-    Debug.p_warning("More than one directory found, count is: " + str(len(dir_list)), len(dir_list) > 1)
++    for idx, proxy in enumerate(sorted(proxies, key=str)):
++        ModularProxy(cluster, proxy, file_name, machine_ids, (idx + 1) if len(proxies) > 1 else None)
+ 
+-    for arch in cluster.get_machine_architectures():
+-        if arch.machine.check_cache():
+-            ModularCache(cluster, arch, file_name)
++    if OPTIONS.gem5 == GEM5_V20:
++        Gem5V20.rewrite_files(glob.glob(file_name.split(".")[0] + "_*.sm"))
+ 
+     print("SLICC files were generated in: " + os.getcwd())
+ 
+diff --git a/Backend/SLICC/TempSLICC/machines/action_dealloc_entry_proxy.sm b/Backend/SLICC/TempSLICC/machines/action_dealloc_entry_proxy.sm
+new file mode 100644
+index 0000000..03273fc
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/action_dealloc_entry_proxy.sm
+@@ -0,0 +1,6 @@
++action(deallocEntry, "d", desc="Deallocate an entry") {
++      if (is_valid(cache.lookup(address))) {
++              cache.deallocate(address);
++      }
++      unset_cache_entry();
++}
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines/action_park_port.sm b/Backend/SLICC/TempSLICC/machines/action_park_port.sm
+new file mode 100644
+index 0000000..1003313
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/action_park_port.sm
+@@ -0,0 +1,6 @@
++action(recycle$0$, $1$, desc="Park the message at the head of the $0$ port") {
++  DPRINTF(RubySlicc, "Stalling $0$ (addr: %#x)\n", address);
++  // No handler for it in the state of its block: it waits out of the queue until the block
++  // enters a state that serves this port (setState, wakeUpParked).
++  stall_and_wait($0$, address);
++}
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines/action_wake_parked.sm b/Backend/SLICC/TempSLICC/machines/action_wake_parked.sm
+new file mode 100644
+index 0000000..b7a9207
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/action_wake_parked.sm
+@@ -0,0 +1,8 @@
++action(wakeUpParked, "wup", desc="Wake up the messages parked for the block that changed state") {
++  // Last action of a transition, after the message in hand has been popped: the woken messages
++  // are older than it and go back to the head of their queue.
++  if (wakeUpPending) {
++    wakeUpPending := false;
++    wakeUpAllBuffers(wakeUpAddr);
++  }
++}
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines/parked_functions.sm b/Backend/SLICC/TempSLICC/machines/parked_functions.sm
+new file mode 100644
+index 0000000..ecae5dd
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/parked_functions.sm
+@@ -0,0 +1,10 @@
++// Parked messages ($0$): a message without a handler in the state of its block leaves the queue
++// (stall_and_wait) and can only be consumed in a state with a handler for its port. setState
++// notes the block that enters such a state, the transition triggered next wakes its messages.
++bool wakeUpPending, default="false";
++Addr wakeUpAddr, default="0";
++
++bool servesParked(State state) {
++  return $1$;
++}
++
+diff --git a/Backend/SLICC/TempSLICC/machines/proxy_evict_block.sm b/Backend/SLICC/TempSLICC/machines/proxy_evict_block.sm
+new file mode 100644
+index 0000000..1d71108
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/proxy_evict_block.sm
+@@ -0,0 +1,12 @@
++// Start Evict handler
++if(($0$) && (is_invalid(getEntry(LineAddress)) && cache.cacheAvail(LineAddress) == false)) {
++    Addr victim := cache.cacheProbe(in_msg.LineAddress);
++    DPRINTF(RubySlicc, "Evicting %#x (%s) for %#x\\n", victim, getState(TBEs[victim], getEntry(victim), victim), LineAddress);
++    Addr LineAddress := victim;
++    TBE tbe := TBEs[LineAddress];
++    Entry entry := getEntry(LineAddress);
++    State st := getState(tbe, entry, LineAddress);
++$1$
++}
++// End Evict Handler: the request handlers below only run when no victim has to be made
++else
+diff --git a/Backend/SLICC/TempSLICC/machines/proxy_header.sm b/Backend/SLICC/TempSLICC/machines/proxy_header.sm
+new file mode 100644
+index 0000000..0c3aab4
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/proxy_header.sm
+@@ -0,0 +1,10 @@
++machine(MachineType:$0$, "Proxy cache controller")
++: CacheMemory *cache;
++
++  Cycles responseLatency := 1;
++  Cycles recycleLatency := 10;
++
++  // Dynamic networks
++  $1$
++
++{
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines/proxy_header_L2private.sm b/Backend/SLICC/TempSLICC/machines/proxy_header_L2private.sm
+new file mode 100644
+index 0000000..0401f28
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/proxy_header_L2private.sm
+@@ -0,0 +1,10 @@
++machine(MachineType:$0$, "Proxy cache controller")
++: CacheMemory *cache;
++  int $1$_id;
++  Cycles responseLatency := 1;
++  Cycles recycleLatency := 10;
++
++  // Dynamic networks
++  $2$
++
++{
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines/proxy_static_functions.sm b/Backend/SLICC/TempSLICC/machines/proxy_static_functions.sm
+new file mode 100644
+index 0000000..62fcf03
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/proxy_static_functions.sm
+@@ -0,0 +1,106 @@
++Tick clockEdge();
++Tick cyclesToTicks(Cycles c);
++Cycles ticksToCycles(Tick t);
++void set_cache_entry(AbstractCacheEntry a);
++void unset_cache_entry();
++void set_tbe(TBE a);
++void unset_tbe();
++void wakeUpAllBuffers(Addr a);
++
++MachineID mapAddressToMachine(Addr addr, MachineType mtype);
++
++  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
++    return static_cast(Entry, "pointer", cache.lookup(LineAddress));
++  }
++
++ DataBlock getCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress) {
++    if (is_valid(tbe) && tbe.dirty) {
++        return tbe.cl;
++    } else if (is_valid(cache_entry)) {
++        return cache_entry.cl;
++    } else {
++        error("block not present");
++    }
++  }
++
++  void setCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress, DataBlock cl) {
++    if (is_valid(tbe) && tbe.dirty) {
++        tbe.cl := cl;
++    } else if (is_valid(cache_entry)) {
++        cache_entry.cl := cl;
++    } else {
++        error("block not present");
++    }
++  }
++
++State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
++  if (is_valid(tbe)) {
++    return tbe.TBEState;
++  } else if (is_valid(cache_entry)) {
++    return cache_entry.$3$;
++  } else {
++    return State:$0$;
++  }
++}
++
++void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
++  DPRINTF(RubySlicc, "%s -> %s (addr: %#x)\n", getState(tbe, cache_entry, LineAddress), state, LineAddress);
++  //if (state != getState(tbe, cache_entry, LineAddress)) {
++  //  wakeUpAllBuffers(LineAddress);
++  //}
++  if (is_valid(tbe)) {
++    tbe.TBEState := state;
++  }
++  if (is_valid(cache_entry)) {
++    cache_entry.$3$ := state;
++  }
++}
++
++AccessPermission getAccessPermission(Addr LineAddress) {
++  TBE tbe := TBEs[LineAddress];
++  if (is_valid(tbe)) {
++    return $2$_State_to_permission(tbe.TBEState);
++  }
++  Entry cache_entry := getEntry(LineAddress);
++  if (is_valid(cache_entry)) {
++    return $2$_State_to_permission(cache_entry.$3$);
++  } else {
++    return AccessPermission:NotPresent;
++  }
++}
++
++void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
++  if (is_valid(cache_entry)) {
++    cache_entry.changePermission($2$_State_to_permission(state));
++  }
++}
++
++  void functionalRead(Addr addr, Packet *pkt) {
++    TBE tbe := TBEs[addr];
++    Entry cache_entry := getEntry(addr);
++    if (is_valid(cache_entry)) {
++      testAndRead(addr, cache_entry.cl, pkt);
++    } else if(is_valid(tbe) && tbe.dirty) {
++      testAndRead(addr, tbe.cl, pkt);
++    } else {
++      error("Block not present!");
++    }
++  }
++
++  int functionalWrite(Addr addr, Packet *pkt) {
++    int num_functional_writes := 0;
++
++    Entry cache_entry := getEntry(addr);
++    if (is_valid(cache_entry)) {
++      num_functional_writes := num_functional_writes +
++        testAndWrite(addr, cache_entry.cl, pkt);
++      return num_functional_writes;
++    }
++
++    TBE tbe := TBEs[addr];
++    if(is_valid(tbe) && tbe.dirty) {
++      num_functional_writes := num_functional_writes +
++      testAndWrite(addr, tbe.cl, pkt);
++    }
++    return num_functional_writes;
++  }
+diff --git a/Backend/SLICC/TempSLICC/machines/transition_alloc_cache_entry.sm b/Backend/SLICC/TempSLICC/machines/transition_alloc_cache_entry.sm
+new file mode 100644
+index 0000000..161809c
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines/transition_alloc_cache_entry.sm
+@@ -0,0 +1,3 @@
++transition($0$, allocCacheEntry) {
++  allocEntry;
++}
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/MEMORY_READ.sm b/Backend/SLICC/TempSLICC/machines_v20/MEMORY_READ.sm
+new file mode 100644
+index 0000000..cfadf1f
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/MEMORY_READ.sm
+@@ -0,0 +1 @@
++queueMemoryRead(in_msg.Sender, LineAddress, toMemLatency);
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/MEMORY_WB.sm b/Backend/SLICC/TempSLICC/machines_v20/MEMORY_WB.sm
+new file mode 100644
+index 0000000..ddaff35
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/MEMORY_WB.sm
+@@ -0,0 +1 @@
++queueMemoryWrite(in_msg.Sender, LineAddress, toMemLatency, in_msg.$0$);
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/cache_header.sm b/Backend/SLICC/TempSLICC/machines_v20/cache_header.sm
+new file mode 100644
+index 0000000..34df70d
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/cache_header.sm
+@@ -0,0 +1,17 @@
++machine(MachineType:$0$, "Cache controller")
++: DOSequencer *sequencer;
++  CacheMemory *cache;
++  CacheMemory *cache_instruction;
++  bool send_evictions;
++  int $1$_id;
++
++  Cycles responseLatency := 1;
++  Cycles recycleLatency := 10;
++
++  // Required networks
++  MessageBuffer *mandatoryQueue;
++
++  // Dynamic networks
++  $2$
++
++{
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/cache_static_functions.sm b/Backend/SLICC/TempSLICC/machines_v20/cache_static_functions.sm
+new file mode 100644
+index 0000000..dab6848
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/cache_static_functions.sm
+@@ -0,0 +1,115 @@
++Tick clockEdge();
++Tick cyclesToTicks(Cycles c);
++Cycles ticksToCycles(Tick t);
++void set_cache_entry(AbstractCacheEntry a);
++void unset_cache_entry();
++void set_tbe(TBE a);
++void unset_tbe();
++void wakeUpAllBuffers(Addr a);
++
++MachineID mapAddressToMachine(Addr addr, MachineType mtype);
++
++  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
++    if (is_valid(cache.lookup(LineAddress))) {
++      return static_cast(Entry, "pointer", cache.lookup(LineAddress));
++    }
++    else {
++      return static_cast(Entry, "pointer", cache_instruction.lookup(LineAddress));
++    }
++  }
++
++  bool hasEntry(Addr LineAddress) {
++    Entry entry := getEntry(LineAddress);
++    return is_valid(entry);
++  }
++
++ DataBlock getCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress) {
++    if (is_valid(tbe) && tbe.dirty) {
++        return tbe.cl;
++    } else if (is_valid(cache_entry)) {
++        return cache_entry.cl;
++    } else {
++        error("block not present");
++    }
++  }
++
++  void setCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress, DataBlock cl) {
++    if (is_valid(tbe) && tbe.dirty) {
++        tbe.cl := cl;
++    } else if (is_valid(cache_entry)) {
++        cache_entry.cl := cl;
++    } else {
++        error("block not present");
++    }
++  }
++
++State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
++  if (is_valid(tbe)) {
++    return tbe.TBEState;
++  } else if (is_valid(cache_entry)) {
++    return cache_entry.$3$;
++  } else {
++    return State:$0$;
++  }
++}
++
++void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
++  DPRINTF(RubySlicc, "%s -> %s (addr: %#x)\n", getState(tbe, cache_entry, LineAddress), state, LineAddress);
++  //if (state != getState(tbe, cache_entry, LineAddress)) {
++  //  wakeUpAllBuffers(LineAddress);
++  //}
++  if (is_valid(tbe)) {
++    tbe.TBEState := state;
++  }
++  if (is_valid(cache_entry)) {
++    cache_entry.$3$ := state;
++  }
++}
++
++AccessPermission getAccessPermission(Addr LineAddress) {
++  TBE tbe := TBEs[LineAddress];
++  if (is_valid(tbe)) {
++    return $2$_State_to_permission(tbe.TBEState);
++  }
++  Entry cache_entry := getEntry(LineAddress);
++  if (is_valid(cache_entry)) {
++    return $2$_State_to_permission(cache_entry.$3$);
++  } else {
++    return AccessPermission:NotPresent;
++  }
++}
++
++void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
++  if (is_valid(cache_entry)) {
++    cache_entry.changePermission($2$_State_to_permission(state));
++  }
++}
++
++  bool functionalRead(Addr addr, Packet *pkt) {
++    TBE tbe := TBEs[addr];
++    Entry cache_entry := getEntry(addr);
++    if (is_valid(cache_entry)) {
++      return testAndRead(addr, cache_entry.cl, pkt);
++    } else if(is_valid(tbe) && tbe.dirty) {
++      return testAndRead(addr, tbe.cl, pkt);
++    }
++    return false;
++  }
++
++  int functionalWrite(Addr addr, Packet *pkt) {
++    int num_functional_writes := 0;
++
++    Entry cache_entry := getEntry(addr);
++    if (is_valid(cache_entry)) {
++      num_functional_writes := num_functional_writes +
++        testAndWrite(addr, cache_entry.cl, pkt);
++      return num_functional_writes;
++    }
++
++    TBE tbe := TBEs[addr];
++    if(is_valid(tbe) && tbe.dirty) {
++      num_functional_writes := num_functional_writes +
++      testAndWrite(addr, tbe.cl, pkt);
++    }
++    return num_functional_writes;
++  }
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/dir_header.sm b/Backend/SLICC/TempSLICC/machines_v20/dir_header.sm
+new file mode 100644
+index 0000000..8fe2610
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/dir_header.sm
+@@ -0,0 +1,15 @@
++machine(MachineType:$0$, "Directory protocol")
++:
++
++  DirectoryMemory *directory;
++  Cycles toMemLatency := 1;
++  Cycles responseLatency := 6;
++  Cycles recycleLatency := 10;
++
++  // Required networks
++  MessageBuffer *responseFromMemory;
++
++  // Dynamic networks
++  $1$
++
++{
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/dir_static_functions.sm b/Backend/SLICC/TempSLICC/machines_v20/dir_static_functions.sm
+new file mode 100644
+index 0000000..c7fa216
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/dir_static_functions.sm
+@@ -0,0 +1,70 @@
++Tick clockEdge();
++Tick cyclesToTicks(Cycles c);
++Cycles ticksToCycles(Tick t);
++void set_tbe(TBE a);
++void unset_tbe();
++void wakeUpAllBuffers(Addr a);
++
++Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
++  Entry entry := static_cast(Entry, "pointer", $1$[LineAddress]);
++  if (is_invalid(entry)) {
++    entry := static_cast(Entry, "pointer", $1$.allocate(LineAddress, new Entry));
++  }
++  return entry;
++}
++
++State getState(TBE tbe, Addr LineAddress) {
++  if (is_valid(tbe)) {
++    return tbe.TBEState;
++  } else if ($1$.isPresent(LineAddress)) {
++    return getEntry(LineAddress).$0$State;
++  } else {
++    return State:$2$;
++  }
++}
++
++void setState(TBE tbe, Addr LineAddress, State state) {
++  DPRINTF(RubySlicc, "%s -> %s (addr: %#x)\n", getState(tbe, LineAddress), state, LineAddress);
++  //if (state != getState(tbe, LineAddress)) {
++  //  wakeUpAllBuffers(LineAddress);
++  //}
++  if (is_valid(tbe)) {
++    tbe.TBEState := state;
++  }
++  if ($1$.isPresent(LineAddress)) {
++    getEntry(LineAddress).$0$State := state;
++  }
++}
++
++AccessPermission getAccessPermission(Addr LineAddress) {
++  TBE tbe := TBEs[LineAddress];
++  if (is_valid(tbe)) {
++    return $0$_State_to_permission(tbe.TBEState);
++  } else if ($1$.isPresent(LineAddress)) {
++    return $0$_State_to_permission(getEntry(LineAddress).$0$State);
++  } else {
++    return AccessPermission:NotPresent;
++  }
++}
++
++void setAccessPermission(Addr LineAddress, State state) {
++  if ($1$.isPresent(LineAddress)) {
++    getEntry(LineAddress).changePermission($0$_State_to_permission(state));
++  }
++}
++
++MachineID mapAddressToMachine(Addr addr, MachineType mtype);
++
++bool functionalRead(Addr LineAddress, Packet *pkt) {
++  // Ruby asks every controller when none holds a readable copy (e.g. the block is Maybe_Stale
++  // here): only the directory of the block reads its memory
++  if (mapAddressToMachine(LineAddress, MachineType:Directory) != machineID) {
++    return false;
++  }
++  functionalMemoryRead(pkt);
++  return true;
++}
++
++int functionalWrite(Addr LineAddress, Packet *pkt) {
++  return 0 + functionalMemoryWrite(pkt);
++}
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/mandatory_cpu_in_port.sm b/Backend/SLICC/TempSLICC/machines_v20/mandatory_cpu_in_port.sm
+new file mode 100644
+index 0000000..e0d2b7e
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/mandatory_cpu_in_port.sm
+@@ -0,0 +1,45 @@
++in_port(mandatory_in, RubyRequest, mandatoryQueue) {
++  if (mandatory_in.isReady(clockEdge())) {
++    peek(mandatory_in, RubyRequest, block_on="LineAddress") {
++      Addr LineAddress := in_msg.LineAddress;
++      Entry entry := getEntry(LineAddress);
++      DPRINTF(RubySlicc, "mandatory_in: %s %s (addr: %#x)\n", in_msg.Type, getState(TBEs[LineAddress], entry, LineAddress), LineAddress);
++      if (is_invalid(entry) && cache_instruction.cacheAvail(LineAddress) == false$4$) {
++      Addr victim := cache_instruction.cacheProbe(in_msg.LineAddress);
++        DPRINTF(RubySlicc, "Evicting %#x (%s) for %#x\n", victim, getState(TBEs[victim], getEntry(victim), victim), LineAddress);
++        Addr LineAddress := victim;
++        TBE tbe := TBEs[LineAddress];
++        Entry entry := getEntry(LineAddress);
++        State st := getState(tbe, entry, LineAddress);
++        $0$
++      } else if (is_invalid(entry) &&
++          cache.cacheAvail(LineAddress) == false$5$) {
++        Addr victim := cache.cacheProbe(in_msg.LineAddress);
++        DPRINTF(RubySlicc, "Evicting %#x (%s) for %#x\n", victim, getState(TBEs[victim], getEntry(victim), victim), LineAddress);
++        Addr LineAddress := victim;
++        TBE tbe := TBEs[LineAddress];
++        Entry entry := getEntry(LineAddress);
++        State st := getState(tbe, entry, LineAddress);
++        $0$
++      } else {
++        TBE tbe := TBEs[LineAddress];
++        Entry entry := getEntry(LineAddress);
++        State st := getState(tbe, entry, LineAddress);
++        if (in_msg.Type == RubyRequestType:LD || in_msg.Type == RubyRequestType:LD_NT ||
++            in_msg.Type == RubyRequestType:LD_ACQ) {
++        $1$
++
++        } else if (in_msg.Type == RubyRequestType:IFETCH) {
++        $2$
++        } else if (in_msg.Type == RubyRequestType:ST || in_msg.Type == RubyRequestType:ST_NT ||
++                   in_msg.Type == RubyRequestType:ST_REL || in_msg.Type == RubyRequestType:ATOMIC ||
++                   in_msg.Type == RubyRequestType:ATOMIC_RETURN ||
++                   in_msg.Type == RubyRequestType:ATOMIC_NO_RETURN) {
++        $3$
++        } else {
++          error("Unexpected message type from processor");
++        }
++      }
++    }
++  }
++}
+\ No newline at end of file
+diff --git a/Backend/SLICC/TempSLICC/machines_v20/proxy_static_functions.sm b/Backend/SLICC/TempSLICC/machines_v20/proxy_static_functions.sm
+new file mode 100644
+index 0000000..55ad14f
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/machines_v20/proxy_static_functions.sm
+@@ -0,0 +1,110 @@
++Tick clockEdge();
++Tick cyclesToTicks(Cycles c);
++Cycles ticksToCycles(Tick t);
++void set_cache_entry(AbstractCacheEntry a);
++void unset_cache_entry();
++void set_tbe(TBE a);
++void unset_tbe();
++void wakeUpAllBuffers(Addr a);
++
++MachineID mapAddressToMachine(Addr addr, MachineType mtype);
++
++  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
++    return static_cast(Entry, "pointer", cache.lookup(LineAddress));
++  }
++
++  bool hasEntry(Addr LineAddress) {
++    Entry entry := getEntry(LineAddress);
++    return is_valid(entry);
++  }
++
++ DataBlock getCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress) {
++    if (is_valid(tbe) && tbe.dirty) {
++        return tbe.cl;
++    } else if (is_valid(cache_entry)) {
++        return cache_entry.cl;
++    } else {
++        error("block not present");
++    }
++  }
++
++  void setCacheBlock(TBE tbe, Entry cache_entry, Addr LineAddress, DataBlock cl) {
++    if (is_valid(tbe) && tbe.dirty) {
++        tbe.cl := cl;
++    } else if (is_valid(cache_entry)) {
++        cache_entry.cl := cl;
++    } else {
++        error("block not present");
++    }
++  }
++
++State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
++  if (is_valid(tbe)) {
++    return tbe.TBEState;
++  } else if (is_valid(cache_entry)) {
++    return cache_entry.$3$;
++  } else {
++    return State:$0$;
++  }
++}
++
++void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
++  DPRINTF(RubySlicc, "%s -> %s (addr: %#x)\n", getState(tbe, cache_entry, LineAddress), state, LineAddress);
++  //if (state != getState(tbe, cache_entry, LineAddress)) {
++  //  wakeUpAllBuffers(LineAddress);
++  //}
++  if (is_valid(tbe)) {
++    tbe.TBEState := state;
++  }
++  if (is_valid(cache_entry)) {
++    cache_entry.$3$ := state;
++  }
++}
++
++AccessPermission getAccessPermission(Addr LineAddress) {
++  TBE tbe := TBEs[LineAddress];
++  if (is_valid(tbe)) {
++    return $2$_State_to_permission(tbe.TBEState);
++  }
++  Entry cache_entry := getEntry(LineAddress);
++  if (is_valid(cache_entry)) {
++    return $2$_State_to_permission(cache_entry.$3$);
++  } else {
++    return AccessPermission:NotPresent;
++  }
++}
++
++void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
++  if (is_valid(cache_entry)) {
++    cache_entry.changePermission($2$_State_to_permission(state));
++  }
++}
++
++  bool functionalRead(Addr addr, Packet *pkt) {
++    TBE tbe := TBEs[addr];
++    Entry cache_entry := getEntry(addr);
++    if (is_valid(cache_entry)) {
++      return testAndRead(addr, cache_entry.cl, pkt);
++    } else if(is_valid(tbe) && tbe.dirty) {
++      return testAndRead(addr, tbe.cl, pkt);
++    }
++    return false;
++  }
++
++  int functionalWrite(Addr addr, Packet *pkt) {
++    int num_functional_writes := 0;
++
++    Entry cache_entry := getEntry(addr);
++    if (is_valid(cache_entry)) {
++      num_functional_writes := num_functional_writes +
++        testAndWrite(addr, cache_entry.cl, pkt);
++      return num_functional_writes;
++    }
++
++    TBE tbe := TBEs[addr];
++    if(is_valid(tbe) && tbe.dirty) {
++      num_functional_writes := num_functional_writes +
++      testAndWrite(addr, tbe.cl, pkt);
++    }
++    return num_functional_writes;
++  }
+diff --git a/Backend/SLICC/TempSLICC/msg_v20/msg_alloy_types.sm b/Backend/SLICC/TempSLICC/msg_v20/msg_alloy_types.sm
+new file mode 100644
+index 0000000..4e2d1aa
+--- /dev/null
++++ b/Backend/SLICC/TempSLICC/msg_v20/msg_alloy_types.sm
+@@ -0,0 +1,38 @@
++// Types that alloy-gem5's MessageBuffer (gem5 v20, Synapse S4) includes to count the messages of
++// its own protocols by type. The messages of this protocol are CoherenceMessage: none is counted.
++enumeration(CoherenceRequestType, desc="Request types of alloy-gem5's protocols (unused)") {
++  NULL_REQUEST, desc="Unused";
++}
++
++enumeration(CoherenceResponseType, desc="Response types of alloy-gem5's protocols (unused)") {
++  NULL_RESPONSE, desc="Unused";
++}
++
++structure(RequestMsg, desc="Request of alloy-gem5's protocols (unused)", interface="Message") {
++  Addr addr, desc="Physical address";
++  CoherenceRequestType Type, desc="Type of request";
++  MessageSizeType MessageSize, desc="Size category of the message";
++
++  bool functionalRead(Packet *pkt) {
++    return false;
++  }
++
++  bool functionalWrite(Packet *pkt) {
++    return false;
++  }
++}
++
++structure(ResponseMsg, desc="Response of alloy-gem5's protocols (unused)", interface="Message") {
++  Addr addr, desc="Physical address";
++  CoherenceResponseType Type, desc="Type of response";
++  MessageSizeType MessageSize, desc="Size category of the message";
++
++  bool functionalRead(Packet *pkt) {
++    return false;
++  }
++
++  bool functionalWrite(Packet *pkt) {
++    return false;
++  }
++}
++

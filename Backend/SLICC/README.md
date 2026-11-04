@@ -10,6 +10,8 @@ repository:
 ```bash
 git clone --depth 1 -b slicc https://github.com/Errare-humanum-est/HeteroGen ../HeteroGen
 cp -r ../HeteroGen/Backend/SLICC/. Backend/SLICC/
+git apply --whitespace=nowarn patches/slicc-backend.patch
 ```
 
-If you use it, please cite HeteroGen (Credits in the main README).
+The patch adds what Synapse needs on top of it: the proxy controller, gem5 v20 support and the entry
+point that uses them. If you use the back end, please cite HeteroGen (Credits in the main README).
