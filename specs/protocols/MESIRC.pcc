@@ -1,0 +1,875 @@
+# NrCaches 3
+
+// MESI-RC: the on-core protocol of the Synapse S4 write-through controllers (MESIRC_*_WT_INCL).
+//
+// It is MESI.pcc with accesses of release-consistency code that are performed at the
+// directory (the coherence point) instead of in the cache, without obtaining a permission:
+//   ntload   non-temporal loads (alloy-gem5 LD_NT, "fake" loads whose value the sequencer
+//            discards: the access reads nothing, there is no `load;`). It asks the directory for
+//            the block (GetNT -> DataNT) without waiting: the cache keeps the block in V at once,
+//            a copy the directory does not track and that grants nothing (a regular access in V
+//            misses, as in I; V is left silently); the DataNT fills V when it finds the cache
+//            there, and is dropped otherwise. The directory answers with the data it has.
+//   acqload  acquire loads (LD_ACQ). It waits for the directory's data (GetACQ -> DataACQ) and
+//            completes with it, in V. Own messages, so that the data of an earlier ntload cannot
+//            complete it.
+//            On a coherent copy (S, E, M) both read the copy.
+//   ntstore  non-temporal and release stores (ST_NT, ST_REL). From I, V or S the written bytes
+//            are sent to the directory (PutNT), with no reply: the cache does not wait (a copy
+//            in V or S is updated too; the directory invalidates S). On an exclusive copy (E, M)
+//            it is a store.
+// The directory merges the bytes of a PutNT into its data. Copies of the caches go first: the
+// sharers are invalidated (the directory collects the Inv_Acks), an owner gets the bytes
+// (Fwd_PutNT), writes them into its copy and gives the block back (WB). A GetNT with an owner
+// is answered by the owner (Fwd_GetNT: DataNT to the requester, WB to the directory), a GetACQ
+// as a GetS (Fwd_GetS); the owner keeps a shared copy and the requester is not a sharer.
+// The data model is one value per block; the back end carries the write mask of a PutNT and of
+// the Fwd_PutNT it causes, and merges only the written bytes.
+
+Network { Ordered fwd;   //FwdGetS, FwdGetM, Inv, PutAck, Fwd_GetNT, Fwd_PutNT
+          Ordered resp;  // Data, InvAck
+          Ordered req;   //GetS, GetM, PutM, GetNT, GetACQ, PutNT
+          };
+
+Cache {
+    State I;
+    Data cl;
+    int[0..NrCaches] acksReceived = 0;
+    int[0..NrCaches] acksExpected = 0;
+} set[NrCaches] cache;
+
+Directory {
+    State I;
+    Data cl;
+    set[NrCaches] ID cache;
+    ID owner;
+} directory;
+
+Message Request{};
+
+Message Ack{};
+
+Message Resp{
+    Data cl;
+};
+
+Message RespAck{
+    Data cl;
+    int[0..NrCaches] acksExpected;
+};
+
+Architecture cache {
+    Stable{I, V, S, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, load, State){
+        msg = Request(GetS, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                load;
+                State = S;
+                break;
+
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                load;
+                State = E;
+                break;
+        }
+    }
+        Process(I, ifetch, State){
+        msg = Request(GetSIfetch, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                ifetch;
+                State = S;
+                break;
+        }
+    }
+
+    Process(I, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                cl=GetM_Ack_AD.cl;
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    Process(I, ntload, V){
+        msg = Request(GetNT, ID, directory.ID);
+        req.send(msg);
+    }
+
+    // The data of an ntload, wherever it finds the cache
+    Process(I, DataNT, I){
+    }
+
+    Process(I, acqload, State){
+        msg = Request(GetACQ, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when DataACQ:
+                cl=DataACQ.cl;
+                load;
+                State = V;
+                break;
+
+            // the directory had an owner, which answers as to a GetS
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                load;
+                State = V;
+                break;
+        }
+    }
+
+    Process(I, ntstore, I){
+        store;
+        msg = Resp(PutNT, ID, directory.ID, cl);
+        req.send(msg);
+    }
+
+    // Only useful to get the I_evict transient state generated
+    Process(I, evict, State){
+        msg = Request(PutI, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutI_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // V ////////////////////////////////////////////////////////
+    // Untracked copy of the last ntload: every access misses as in I
+    Process(V, load, State){
+        msg = Request(GetS, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                load;
+                State = S;
+                break;
+
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                load;
+                State = E;
+                break;
+        }
+    }
+        Process(V, ifetch, State){
+        msg = Request(GetSIfetch, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                ifetch;
+                State = S;
+                break;
+        }
+    }
+
+    Process(V, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                cl=GetM_Ack_AD.cl;
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    Process(V, ntload, V){
+        msg = Request(GetNT, ID, directory.ID);
+        req.send(msg);
+    }
+
+    Process(V, DataNT, V){
+        cl = DataNT.cl;
+    }
+
+    Process(V, acqload, State){
+        msg = Request(GetACQ, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when DataACQ:
+                cl=DataACQ.cl;
+                load;
+                State = V;
+                break;
+
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                load;
+                State = V;
+                break;
+        }
+    }
+
+    Process(V, ntstore, V){
+        store;
+        msg = Resp(PutNT, ID, directory.ID, cl);
+        req.send(msg);
+    }
+
+    Process(V, evict, I){
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, load){
+        load;
+    }
+        Process(S, ifetch){
+        ifetch;
+    }
+    Process(S, ntload){
+    }
+    Process(S, acqload){
+        load;
+    }
+
+    Process(S, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    // Written through as from V; the directory invalidates the sharers, this cache too
+    Process(S, ntstore, S){
+        store;
+        msg = Resp(PutNT, ID, directory.ID, cl);
+        req.send(msg);
+    }
+
+    Process(S, evict, State){
+        msg = Request(PutS, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutS_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    Process(S, DataNT, S){
+    }
+
+    Process(S, Inv, I){
+        msg = Ack(Inv_Ack, ID, Inv.src);
+        resp.send(msg);
+    }
+
+    // M ////////////////////////////////////////////////////////
+    Process(M, load){
+        load;
+    }
+        Process(M, ifetch){
+        ifetch;
+    }
+    Process(M, ntload){
+    }
+    Process(M, acqload){
+        load;
+    }
+
+    Process(M, store){
+        store;
+    }
+    Process(M, ntstore){
+        store;
+    }
+
+    Process(M, Fwd_GetM, I){
+        msg = Resp(GetM_Ack_D, ID, Fwd_GetM.src, cl);
+        resp.send(msg);
+    }
+
+    Process(M, Fwd_GetS, S){
+        msg = Resp(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(M, DataNT, M){
+    }
+
+    Process(M, Fwd_GetNT, S){
+        msg = Resp(DataNT, ID, Fwd_GetNT.src, cl);
+        resp.send(msg);
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(M, Fwd_PutNT, I){
+        cl = Fwd_PutNT.cl;
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(M, evict, State){
+        msg = Resp(PutM, ID, directory.ID, cl);
+        req.send(msg);
+
+        await{
+            when PutM_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, load){
+        load;
+    }
+        Process(E, ifetch){
+        ifetch;
+    }
+    Process(E, ntload){
+    }
+    Process(E, acqload){
+        load;
+    }
+
+    Process(E, store, M){
+        store;
+    }
+    Process(E, ntstore, M){
+        store;
+    }
+
+    Process(E, Fwd_GetM, I){
+        msg = Resp(GetM_Ack_D, ID, Fwd_GetM.src, cl);
+        resp.send(msg);
+    }
+
+    Process(E, Fwd_GetS, S){
+        msg = Resp(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(E, DataNT, E){
+    }
+
+    Process(E, Fwd_GetNT, S){
+        msg = Resp(DataNT, ID, Fwd_GetNT.src, cl);
+        resp.send(msg);
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(E, Fwd_PutNT, I){
+        cl = Fwd_PutNT.cl;
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(E, evict, State){
+        msg = Ack(PutE, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutE_Ack:
+                State = I;
+                break;
+        }
+    }
+
+}
+
+Architecture directory {
+    Stable{I, S, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, GetS, E){
+       msg = Resp(GetM_Ack_D, ID, GetS.src, cl);
+       resp.send(msg);
+       owner = GetS.src;
+    }
+
+       Process(I, GetSIfetch, S){
+       msg = Resp(GetS_Ack, ID, GetSIfetch.src, cl);
+       resp.send(msg);
+       cache.add(GetSIfetch.src);
+    }
+
+    Process(I, GetM, M){
+        msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+        resp.send(msg);
+        owner = GetM.src;
+    }
+
+    Process(I, GetNT, I){
+       msg = Resp(DataNT, ID, GetNT.src, cl);
+       resp.send(msg);
+    }
+
+    Process(I, GetACQ, I){
+       msg = Resp(DataACQ, ID, GetACQ.src, cl);
+       resp.send(msg);
+    }
+
+    Process(I, PutNT, I){
+       cl = PutNT.cl;
+    }
+
+    Process(I, PutS){
+       msg = Ack(PutI_Ack, ID, PutS.src);
+       resp.send(msg);
+       cache.del(PutS.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(I, PutM){
+       msg = Ack(PutI_Ack, ID, PutM.src);
+       resp.send(msg);
+       cache.del(PutM.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, GetS){
+       msg = Resp(GetS_Ack, ID, GetS.src, cl);
+       resp.send(msg);
+       cache.add(GetS.src);
+    }
+
+       Process(S, GetSIfetch, S){
+       msg = Resp(GetS_Ack, ID, GetSIfetch.src, cl);
+       resp.send(msg);
+       cache.add(GetSIfetch.src);
+    }
+
+    Process(S, GetM){
+       if cache.contains(GetM.src){
+           cache.del(GetM.src);
+       }
+       if cache.count() == 0{
+           msg = Resp(GetM_Ack_D, ID, GetM.src, cl);
+           resp.send(msg);
+       } else {
+           msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+           resp.send(msg);
+           msg = Ack(Inv, GetM.src, GetM.src);
+           fwd.mcast(msg, cache);
+       }
+       owner = GetM.src;
+       cache.clear();
+       State=M;
+    }
+
+    Process(S, GetNT, S){
+       msg = Resp(DataNT, ID, GetNT.src, cl);
+       resp.send(msg);
+    }
+
+    Process(S, GetACQ, S){
+       msg = Resp(DataACQ, ID, GetACQ.src, cl);
+       resp.send(msg);
+    }
+
+    // The sharers are invalidated, their acks come back to the directory
+    Process(S, PutNT, State){
+       cl = PutNT.cl;
+       msg = Ack(Inv, ID, ID);
+       fwd.mcast(msg, cache);
+
+       await{
+            when Inv_Ack:
+                cache.del(Inv_Ack.src);
+                if cache.count() == 0{
+                    State = I;
+                    break;
+                }
+       }
+    }
+
+    Process(S, PutS){
+       if cache.contains(PutS.src){
+            msg = Ack(PutS_Ack, ID, PutS.src);
+            resp.send(msg);
+            cache.del(PutS.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutS.src);
+            resp.send(msg);
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(S, PutM){
+       if cache.contains(PutM.src){
+            msg = Ack(PutS_Ack, ID, PutM.src);
+            resp.send(msg);
+            cache.del(PutM.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(S, PutE){
+       if owner == PutE.src{
+            msg = Ack(PutS_Ack, ID, PutE.src);
+            resp.send(msg);
+            cache.del(PutE.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutE.src);
+            resp.send(msg);
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // M ////////////////////////////////////////////////////////
+    Process(M, GetS){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = S;
+                    break;
+                }
+       }
+
+    }
+
+    Process(M, GetM){
+       msg = Request(Fwd_GetM, GetM.src, owner);
+       fwd.send(msg);
+       owner = GetM.src;
+    }
+
+    Process(M, GetSIfetch){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = S;
+                    break;
+                }
+       }
+
+    }
+
+    // The owner answers the requester and keeps a shared copy; the requester is not a sharer
+    Process(M, GetNT){
+       msg = Request(Fwd_GetNT, GetNT.src, owner);
+       fwd.send(msg);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = S;
+                    break;
+                }
+       }
+
+    }
+
+    // The owner writes the bytes into its copy and gives the block back
+    Process(M, GetACQ){
+       msg = Request(Fwd_GetS, GetACQ.src, owner);
+       fwd.send(msg);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = S;
+                    break;
+                }
+       }
+
+    }
+
+    // The owner writes the bytes into its copy and gives the block back
+    Process(M, PutNT){
+       cl = PutNT.cl;
+       msg = Resp(Fwd_PutNT, ID, owner, cl);
+       fwd.send(msg);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = I;
+                    break;
+                }
+       }
+
+    }
+
+    Process(M, PutM, State){
+       cache.del(PutM.src);
+       if owner == PutM.src{
+            msg = Ack(PutM_Ack, ID, PutM.src);
+            resp.send(msg);
+            cl = PutM.cl;
+            State=I;
+       }
+       // No need to check if NOT OWNER BUT SHARER (after Fwd_GetS)
+       //     --> directory is S in that case
+       else{
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, GetS){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State=S;
+                    break;
+                }
+       }
+
+    }
+
+    Process(E, GetSIfetch){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State=S;
+                    break;
+                }
+       }
+
+    }
+    Process(E, GetM){
+       msg = Request(Fwd_GetM, GetM.src, owner);
+       fwd.send(msg);
+       owner = GetM.src;
+       State=M;
+    }
+
+    Process(E, GetNT){
+       msg = Request(Fwd_GetNT, GetNT.src, owner);
+       fwd.send(msg);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State=S;
+                    break;
+                }
+       }
+
+    }
+
+    Process(E, GetACQ){
+       msg = Request(Fwd_GetS, GetACQ.src, owner);
+       fwd.send(msg);
+       cache.add(owner);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State=S;
+                    break;
+                }
+       }
+
+    }
+
+    Process(E, PutNT){
+       cl = PutNT.cl;
+       msg = Resp(Fwd_PutNT, ID, owner, cl);
+       fwd.send(msg);
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = I;
+                    break;
+                }
+       }
+
+    }
+
+    Process(E, PutE, State){
+       cache.del(PutE.src);
+       if owner == PutE.src{
+            msg = Ack(PutE_Ack, ID, PutE.src);
+            resp.send(msg);
+            State=I;
+       }
+       // No need to check if NOT OWNER BUT SHARER (after Fwd_GetS)
+       //     --> directory is S in that case
+       else{
+            msg = Ack(PutI_Ack, ID, PutE.src);
+            resp.send(msg);
+       }
+    }
+
+    Process(E, PutM, State){
+       cache.del(PutM.src);
+       if owner == PutM.src{
+            msg = Ack(PutM_Ack, ID, PutM.src);
+            resp.send(msg);
+            cl = PutM.cl;
+            State=I;
+       }
+       // No need to check if NOT OWNER BUT SHARER (after Fwd_GetS)
+       //     --> directory is S in that case
+       else{
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+    }
+
+}

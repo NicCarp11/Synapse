@@ -1,0 +1,703 @@
+# NrCaches 3
+
+// MESIF protocol of the Synapse artifact (MESI_MESIF_WB_INCL_* controllers).
+//
+// It is MESI.pcc with the shared state of the directory turned into a forwarding state F:
+// one of the sharers, the forwarder, answers the GetS and GetM requests instead of the memory.
+//   Directory  stable states I, E, F, M. It tracks the forwarder and the previous forwarder (the
+//              sharer that served the last GetS, used as a backup when the forwarder evicts).
+//              F + GetS:  the forwarder sends the data, the requester becomes the forwarder, the
+//                         directory waits for the Unblock of the previous forwarder.
+//              F + GetM:  the forwarder sends GetM_Ack_A (data + number of acks) to the requester.
+//                         If the requester is the forwarder itself it already holds the block, and
+//                         the directory acknowledges with GetM_Ack_U (the number of acks, no
+//                         data). The other sharers are invalidated, the directory waits for the
+//                         Unblock of the requester.
+//              F + PutS:  a new forwarder is elected among the sharers when the forwarder leaves;
+//                         a stale PutS (the sender is no longer a sharer) gets PutI_Ack.
+//   Cache      stable states I, S, E, M. Any sharer can forward (the directory picks it):
+//              S + Fwd_GetS -> GetS_Ack to the requester, Unblock to the directory.
+//              S + Fwd_GetM -> GetM_Ack_A to the requester.
+//              GetM_Ack_A is GetM_Ack_AD followed by an Unblock to the directory; GetM_Ack_U
+//              is GetM_Ack_A without the block.
+//              Clean evictions (PutS, PutE) carry the block. The directory of this protocol does
+//              not read it; an exclusive controller above the caches keeps it when the last copy
+//              leaves (MESI_MESIF_WB_EXCL). The SLICC back end sends the data only to machines
+//              that read it.
+
+Network { Ordered fwd;   //FwdGetS, FwdGetM, Inv, PutAck
+          Ordered resp;  // Data, InvAck, Unblock
+          Ordered req;   //GetS, GetM, PutM
+          };
+
+Cache {
+    State I;
+    Data cl;
+    int[0..NrCaches] acksReceived = 0;
+    int[0..NrCaches] acksExpected = 0;
+} set[NrCaches] cache;
+
+Directory {
+    State I;
+    Data cl;
+    set[NrCaches] ID cache;
+    ID owner;
+    ID forwarder;
+    ID prevForwarder;
+} directory;
+
+Message Request{};
+
+Message Ack{};
+
+Message Resp{
+    Data cl;
+};
+
+Message RespAck{
+    Data cl;
+    int[0..NrCaches] acksExpected;
+};
+
+Message FwdAck{
+    int[0..NrCaches] acksExpected;
+};
+
+Architecture cache {
+    Stable{I, S, E, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, load, State){
+        msg = Request(GetS, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                load;
+                State = S;
+                break;
+
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                load;
+                State = E;
+                break;
+        }
+    }
+        Process(I, ifetch, State){
+        msg = Request(GetSIfetch, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when GetS_Ack:
+                cl=GetS_Ack.cl;
+                ifetch;
+                State = S;
+                break;
+        }
+    }
+
+    Process(I, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                cl=GetM_Ack_D.cl;
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                cl=GetM_Ack_AD.cl;
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            // From the forwarder (or the directory in F): the directory waits for the Unblock
+            when GetM_Ack_A:
+                cl=GetM_Ack_A.cl;
+                acksExpected = GetM_Ack_A.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    msg = Resp(Unblock, ID, directory.ID, cl);
+                    resp.send(msg);
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            msg = Resp(Unblock, ID, directory.ID, cl);
+                            resp.send(msg);
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    // Only useful to get the I_evict transient state generated
+    Process(I, evict, State){
+        msg = Request(PutI, ID, directory.ID);
+        req.send(msg);
+
+        await{
+            when PutI_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // S ////////////////////////////////////////////////////////
+    Process(S, load){
+        load;
+    }
+        Process(S, ifetch){
+        ifetch;
+    }
+
+    Process(S, store, State){
+        msg = Request(GetM, ID, directory.ID);
+        req.send(msg);
+        acksReceived = 0;
+
+        await{
+            when GetM_Ack_D:
+                store;
+                State = M;
+                break;
+
+            when GetM_Ack_AD:
+                acksExpected = GetM_Ack_AD.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when GetM_Ack_A:
+                acksExpected = GetM_Ack_A.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    msg = Resp(Unblock, ID, directory.ID, cl);
+                    resp.send(msg);
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            msg = Resp(Unblock, ID, directory.ID, cl);
+                            resp.send(msg);
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when GetM_Ack_U:
+                acksExpected = GetM_Ack_U.acksExpected;
+
+                if acksExpected == acksReceived{
+                    store;
+                    msg = Resp(Unblock, ID, directory.ID, cl);
+                    resp.send(msg);
+                    State = M;
+                    break;
+                }
+
+                await{
+                    when Inv_Ack:
+                        acksReceived = acksReceived + 1;
+
+                        if acksExpected == acksReceived{
+                            store;
+                            msg = Resp(Unblock, ID, directory.ID, cl);
+                            resp.send(msg);
+                            State = M;
+                            break;
+                        }
+                    }
+
+            when Inv_Ack:
+                acksReceived = acksReceived + 1;
+        }
+    }
+
+    Process(S, evict, State){
+        msg = Resp(PutS, ID, directory.ID, cl);
+        req.send(msg);
+
+        await{
+            when PutS_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    Process(S, Inv, I){
+        msg = Ack(Inv_Ack, ID, Inv.src);
+        resp.send(msg);
+    }
+
+    // The directory chose this sharer as the forwarder
+    Process(S, Fwd_GetS, S){
+        msg = Resp(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+        msg = Resp(Unblock, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(S, Fwd_GetM, I){
+        msg = RespAck(GetM_Ack_A, ID, Fwd_GetM.src, cl, Fwd_GetM.acksExpected);
+        resp.send(msg);
+    }
+
+    // M ////////////////////////////////////////////////////////
+    Process(M, load){
+        load;
+    }
+        Process(M, ifetch){
+        ifetch;
+    }
+
+    Process(M, store){
+        store;
+    }
+
+    Process(M, Fwd_GetM, I){
+        msg = Resp(GetM_Ack_D, ID, Fwd_GetM.src, cl);
+        resp.send(msg);
+    }
+
+    Process(M, Fwd_GetS, S){
+        msg = Resp(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(M, evict, State){
+        msg = Resp(PutM, ID, directory.ID, cl);
+        req.send(msg);
+
+        await{
+            when PutM_Ack:
+                State = I;
+                break;
+        }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, load){
+        load;
+    }
+        Process(E, ifetch){
+        ifetch;
+    }
+
+    Process(E, store, M){
+        store;
+    }
+
+    Process(E, Fwd_GetM, I){
+        msg = Resp(GetM_Ack_D, ID, Fwd_GetM.src, cl);
+        resp.send(msg);
+    }
+
+    Process(E, Fwd_GetS, S){
+        msg = Resp(GetS_Ack, ID, Fwd_GetS.src, cl);
+        resp.send(msg);
+        msg = Resp(WB, ID, directory.ID, cl);
+        resp.send(msg);
+    }
+
+    Process(E, evict, State){
+        msg = Resp(PutE, ID, directory.ID, cl);
+        req.send(msg);
+
+        await{
+            when PutE_Ack:
+                State = I;
+                break;
+        }
+    }
+
+}
+
+Architecture directory {
+    Stable{I, E, F, M}
+
+    // I ////////////////////////////////////////////////////////
+    Process(I, GetS, E){
+       msg = Resp(GetM_Ack_D, ID, GetS.src, cl);
+       resp.send(msg);
+       owner = GetS.src;
+    }
+
+    // The requester becomes the forwarder
+    Process(I, GetSIfetch, F){
+       msg = Resp(GetS_Ack, ID, GetSIfetch.src, cl);
+       resp.send(msg);
+       if forwarder != GetSIfetch.src{
+            prevForwarder = forwarder;
+            forwarder = GetSIfetch.src;
+       }
+       cache.add(GetSIfetch.src);
+    }
+
+    Process(I, GetM, M){
+        msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
+        resp.send(msg);
+        owner = GetM.src;
+    }
+
+    Process(I, PutS){
+       msg = Ack(PutI_Ack, ID, PutS.src);
+       resp.send(msg);
+       cache.del(PutS.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(I, PutM){
+       msg = Ack(PutI_Ack, ID, PutM.src);
+       resp.send(msg);
+       cache.del(PutM.src);
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // F ////////////////////////////////////////////////////////
+    // The forwarder serves the request; the requester becomes the forwarder and the previous
+    // forwarder unblocks the directory
+    Process(F, GetS){
+       msg = Request(Fwd_GetS, GetS.src, forwarder);
+       fwd.send(msg);
+       prevForwarder = forwarder;
+       forwarder = GetS.src;
+       cache.add(GetS.src);
+
+       await{
+            when Unblock:
+                if Unblock.src == prevForwarder{
+                    State = F;
+                    break;
+                }
+       }
+    }
+
+       Process(F, GetSIfetch){
+       msg = Request(Fwd_GetS, GetSIfetch.src, forwarder);
+       fwd.send(msg);
+       prevForwarder = forwarder;
+       forwarder = GetSIfetch.src;
+       cache.add(GetSIfetch.src);
+
+       await{
+            when Unblock:
+                if Unblock.src == prevForwarder{
+                    State = F;
+                    break;
+                }
+       }
+    }
+
+    // The forwarder sends the data and the number of acks (the directory does it if the requester
+    // is the forwarder), the other sharers are invalidated, the requester unblocks the directory
+    Process(F, GetM){
+       if cache.contains(GetM.src){
+           cache.del(GetM.src);
+           if cache.count() == 0{
+               if GetM.src == forwarder{
+                   msg = FwdAck(GetM_Ack_U, ID, GetM.src, cache.count());
+                   fwd.send(msg);
+               } else {
+                   msg = FwdAck(Fwd_GetM, GetM.src, forwarder, cache.count());
+                   fwd.send(msg);
+               }
+           } else {
+               cache.del(forwarder);
+               if GetM.src == forwarder{
+                   msg = FwdAck(GetM_Ack_U, ID, GetM.src, cache.count());
+                   fwd.send(msg);
+               } else {
+                   msg = FwdAck(Fwd_GetM, GetM.src, forwarder, cache.count());
+                   fwd.send(msg);
+               }
+               if cache.count() != 0{
+                   msg = Ack(Inv, GetM.src, GetM.src);
+                   fwd.mcast(msg, cache);
+               }
+           }
+       } else {
+           if cache.count() == 0{
+               msg = FwdAck(Fwd_GetM, GetM.src, forwarder, cache.count());
+               fwd.send(msg);
+           } else {
+               cache.del(forwarder);
+               msg = FwdAck(Fwd_GetM, GetM.src, forwarder, cache.count());
+               fwd.send(msg);
+               if cache.count() != 0{
+                   msg = Ack(Inv, GetM.src, GetM.src);
+                   fwd.mcast(msg, cache);
+               }
+           }
+       }
+       owner = GetM.src;
+       cache.clear();
+
+       await{
+            when Unblock:
+                State = M;
+                break;
+       }
+    }
+
+    // A forwarder that leaves is replaced by the previous forwarder, or by another sharer if
+    // they are the same; a previous forwarder that leaves is replaced by another sharer.
+    // A PutS from a cache that is no longer a sharer (invalidated, or it forwarded the block for a
+    // GetM, while evicting; the directory became F again in between) is answered with PutI_Ack,
+    // which is what its I_evict state waits for (as S + PutS in MESI.pcc)
+    Process(F, PutS){
+       if cache.contains(PutS.src){
+            msg = Ack(PutS_Ack, ID, PutS.src);
+            resp.send(msg);
+            cache.del(PutS.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutS.src);
+            resp.send(msg);
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+
+       if PutS.src == forwarder{
+            if forwarder == prevForwarder{
+                forwarder = cache.smallest();
+                prevForwarder = cache.smallest();
+            } else {
+                forwarder = prevForwarder;
+            }
+       } else {
+            if PutS.src == prevForwarder{
+                prevForwarder = cache.smallest();
+            }
+       }
+    }
+
+    Process(F, PutM){
+       if cache.contains(PutM.src){
+            msg = Ack(PutS_Ack, ID, PutM.src);
+            resp.send(msg);
+            cache.del(PutM.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    Process(F, PutE){
+       if owner == PutE.src{
+            msg = Ack(PutS_Ack, ID, PutE.src);
+            resp.send(msg);
+            cache.del(PutE.src);
+       } else {
+            msg = Ack(PutI_Ack, ID, PutE.src);
+            resp.send(msg);
+       }
+
+       if cache.count() == 0{
+            State=I;
+            break;
+       }
+    }
+
+    // M ////////////////////////////////////////////////////////
+    // The owner sends the data and keeps a shared copy; the requester becomes the forwarder and
+    // the owner the previous forwarder
+    Process(M, GetS){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+       cache.add(owner);
+       prevForwarder = owner;
+       forwarder = GetS.src;
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = F;
+                    break;
+                }
+       }
+
+    }
+
+    Process(M, GetM){
+       msg = FwdAck(Fwd_GetM, GetM.src, owner, 0);
+       fwd.send(msg);
+       owner = GetM.src;
+    }
+
+    Process(M, GetSIfetch){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+       cache.add(owner);
+       prevForwarder = owner;
+       forwarder = GetSIfetch.src;
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State = F;
+                    break;
+                }
+       }
+
+    }
+    Process(M, PutM, State){
+       cache.del(PutM.src);
+       if owner == PutM.src{
+            msg = Ack(PutM_Ack, ID, PutM.src);
+            resp.send(msg);
+            cl = PutM.cl;
+            State=I;
+       }
+       else{
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+    }
+
+    // E ////////////////////////////////////////////////////////
+    Process(E, GetS){
+       msg = Request(Fwd_GetS, GetS.src, owner);
+       fwd.send(msg);
+       cache.add(GetS.src);
+       cache.add(owner);
+       prevForwarder = owner;
+       forwarder = GetS.src;
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State=F;
+                    break;
+                }
+       }
+
+    }
+
+    Process(E, GetSIfetch){
+       msg = Request(Fwd_GetS, GetSIfetch.src, owner);
+       fwd.send(msg);
+       cache.add(GetSIfetch.src);
+       cache.add(owner);
+       prevForwarder = owner;
+       forwarder = GetSIfetch.src;
+
+       await{
+            when WB:
+                if WB.src == owner{
+                    cl = WB.cl;
+                    State=F;
+                    break;
+                }
+       }
+
+    }
+    Process(E, GetM){
+       msg = FwdAck(Fwd_GetM, GetM.src, owner, 0);
+       fwd.send(msg);
+       owner = GetM.src;
+       State=M;
+    }
+
+    Process(E, PutE, State){
+       cache.del(PutE.src);
+       if owner == PutE.src{
+            msg = Ack(PutE_Ack, ID, PutE.src);
+            resp.send(msg);
+            State=I;
+       }
+       else{
+            msg = Ack(PutI_Ack, ID, PutE.src);
+            resp.send(msg);
+       }
+    }
+
+    Process(E, PutM, State){
+       cache.del(PutM.src);
+       if owner == PutM.src{
+            msg = Ack(PutM_Ack, ID, PutM.src);
+            resp.send(msg);
+            cl = PutM.cl;
+            State=I;
+       }
+       else{
+            msg = Ack(PutI_Ack, ID, PutM.src);
+            resp.send(msg);
+       }
+    }
+
+}
