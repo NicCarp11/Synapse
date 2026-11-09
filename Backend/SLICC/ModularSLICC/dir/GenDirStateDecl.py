@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -30,9 +31,9 @@
 #
 
 from typing import List
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common.GenMachineStateDecl import GenMachineStateDecl
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 
 
 class GenDirStateDecl(TemplateHandler):
@@ -41,9 +42,9 @@ class GenDirStateDecl(TemplateHandler):
     def __init__(self, handler_dir: str):
         TemplateHandler.__init__(self, handler_dir)
 
-    def gen_dir_state_decl_str(self, arch: BaseArchitecture, main_mem_induced_states: List[str]) -> str:
+    def gen_dir_state_decl_str(self, arch: FlatArchitecture, main_mem_induced_states: List[str]) -> str:
         const_str = "//" + __name__ + self.nl
-        state_declaration_body = GenMachineStateDecl.gen_machine_state_decl_body_str(self, arch) \
+        state_declaration_body = GenMachineStateDecl.gen_machine_state_decl_body_str(self, arch, False) \
                                  + self.nl \
                                  + self.nl.join([self.tab + self.string_repl_keys(self.open_template("state_declaration_entry.sm"),
                                                                     [state_name, "Read_Only"]

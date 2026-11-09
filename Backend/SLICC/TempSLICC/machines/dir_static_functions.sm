@@ -3,6 +3,7 @@ Tick cyclesToTicks(Cycles c);
 Cycles ticksToCycles(Tick t);
 void set_tbe(TBE a);
 void unset_tbe();
+void wakeUpAllBuffers(Addr a);
 
 Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
   Entry entry := static_cast(Entry, "pointer", $1$[LineAddress]);

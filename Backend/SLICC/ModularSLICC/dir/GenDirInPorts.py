@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -30,17 +31,25 @@
 #
 
 import re
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 from collections import OrderedDict
 from networkx import DiGraph
 
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.ClassCluster import Cluster
-from Backend.Murphi.MurphiModular.General.GenMurphiTree import UniqueNode
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenMachineInPorts import GenMachineInPorts
 from Backend.SLICC.ModularSLICC.common.GenSLICCTree import GenSLICCTree
+
+
+class UniqueNode:
+
+    def __init__(self, data: Any):
+        self.data = data
+
+    def __str__(self):
+        return str(self.data)
 
 
 class GenDirInPorts(TemplateHandler):
@@ -67,7 +76,7 @@ class GenDirInPorts(TemplateHandler):
                + self._gen_mem_in_port(cluster,
                                        arch,
                                        main_memory_accesses,
-                                       Util.get_message_data_var(cluster),
+                                       Util.get_message_data_var(arch.global_arch),
                                        Util.get_active_cache_line(arch),
                                        out_ports,
                                        machine_mappings
@@ -95,7 +104,7 @@ class GenDirInPorts(TemplateHandler):
             for end_node in end_nodes:
                 if "trigger(Event" not in operation_tree.nodes[end_node]['op_str']:
                     # Let's also try always executing a "dummy" event to force SLICC to progress...
-                    dummy_str = Util.gen_progress_str(self, arch)
+                    dummy_str = Util.gen_progress_str(self, False)
                     dummy_node = UniqueNode(str(end_node) + dummy_str)
                     operation_tree.add_node(dummy_node, op_str=dummy_str)
                     operation_tree.add_edge(end_node, dummy_node)
@@ -114,6 +123,6 @@ class GenDirInPorts(TemplateHandler):
                              )
 
         body = " else ".join(body_strs) \
-               + f" else {{{self.nl}{self.tab}{Util.gen_stall_str(self, arch, 'memQueue_in')}}}"
+               + f" else {{{self.nl}{self.tab}{Util.gen_stall_str(self, False, 'memQueue_in')}}}"
 
         return self.string_repl_keys(self.open_template("memory_in_port.sm"), [self.add_tabs(body, 3)])

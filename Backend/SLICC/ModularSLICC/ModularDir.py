@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -43,8 +44,8 @@ class ModularDir(GenDirBase):
 
         file_name = file_name.split(".")[0] + "_dir_synth.sm"
 
-        out_ports = Util.get_out_ports(arch)
-        in_ports = Util.get_in_ports(arch)
+        out_ports = Util.get_out_ports(arch, False)
+        in_ports = Util.get_in_ports(arch, False)
 
         # In the directory we sometimes need to add an extra step in some transitions,
         # since the ProtoGen DSL does not explicitly deal with main memory but this is
