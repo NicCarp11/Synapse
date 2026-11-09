@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use Synapse, please cite the paper."
+message: "If you use Synapse, please cite the paper and the works it builds on (references); if you use the SLICC back end, cite HeteroGen and Synapse."
 title: "Synapse"
 url: "https://synapse-coherence.github.io"
 license: MIT
