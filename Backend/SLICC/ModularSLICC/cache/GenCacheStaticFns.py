@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -29,9 +30,9 @@
 #
 #
 
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 
 
 class GenCacheStaticFns(TemplateHandler):
@@ -40,7 +41,7 @@ class GenCacheStaticFns(TemplateHandler):
     def __init__(self, handler_dir: str):
         TemplateHandler.__init__(self, handler_dir)
 
-    def gen_cache_static_fns_str(self, arch: BaseArchitecture) -> str:
+    def gen_cache_static_fns_str(self, arch: FlatArchitecture, machine_id: str) -> str:
         const_str = "//" + __name__ + self.nl
         const_str += self.string_repl_keys(self.open_template(GenCacheStaticFns.template_file),
                                            [str(arch.init_state),
@@ -49,4 +50,8 @@ class GenCacheStaticFns(TemplateHandler):
                                             "CacheState"
                                             ]
                                            )
+        if Util.partial_messages(arch.global_arch):
+            const_str += self.open_template("partial_data_functions.sm")
+            if Util.rc_accesses(arch):
+                const_str += self.open_template("rc_store_functions.sm")
         return const_str + self.nl

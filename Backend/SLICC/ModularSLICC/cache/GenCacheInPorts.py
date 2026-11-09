@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -29,16 +30,18 @@
 #
 #
 
-from typing import Dict
+from typing import Dict, Tuple
 from collections import OrderedDict
 
-from numpy.core.numeric import True_
-
+from DataObjects.ClassCluster import Cluster
+from DataObjects.ClassMultiDict import MultiDict
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common.GenMachineInPorts import GenMachineInPorts
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenPCCToSLICC import GenPCCToSLICC
 from Backend.SLICC.ModularSLICC.common.GenSLICCTree import GenSLICCTree
+import re
 
 
 class GenCacheInPorts(TemplateHandler):
@@ -63,17 +66,16 @@ class GenCacheInPorts(TemplateHandler):
 
     def _gen_mandatory_in_port(self, cluster: Cluster, arch: FlatArchitecture, out_ports: 'OrderedDict[str, str]', machine_mappings: dict[str, str]) -> str:
 
-        access_transitions = {access: MultiDict() for access in ["load", "store", "evict", "ifetch"]}
+        rc_accesses = Util.rc_accesses(arch)
+        access_transitions = {access: MultiDict() for access in ["load", "store", "evict", "ifetch"] + rc_accesses}
         for state in sorted(arch.get_architecture_states_verified(), key=str):
             for trans in state.getaccessmiss():
-                access = trans.guard
-                access = str(access)
+                access = Util.transition_access(trans)
                 assert (True, str(state)) not in access_transitions[access], \
                     f"Cannot both hit and miss the same access in the same state ({access},{str(state)})."
                 access_transitions[access][(False, str(state))] = trans
             for trans in state.getaccesshit():
-                access = trans.guard
-                access = str(access)
+                access = Util.transition_access(trans)
                 assert (False, str(state)) not in access_transitions[access], \
                     f"Cannot both hit and miss the same access in the same state ({access},{str(state)})."
                 access_transitions[access][(True, str(state))] = trans
@@ -83,17 +85,63 @@ class GenCacheInPorts(TemplateHandler):
                 access_transitions['evict'][(False, str(state))] = evicts[0]
                 # Note we treat all evicts like "misses" as they do not require a callback to the sequencer
 
-        return self.string_repl_keys(self.open_template("mandatory_cpu_in_port.sm"),
+        load_str = self._gen_access_str(cluster, arch, access_transitions, out_ports, machine_mappings, 5, "load")
+        if len(access_transitions["ifetch"]) > 0:
+            # Instruction fetches have their own transitions and live in cache_instruction
+            ifetch_str = self._gen_access_str(
+                cluster, arch, access_transitions, out_ports, machine_mappings, 5, "ifetch")
+            icache_victim = " && in_msg.Type == RubyRequestType:IFETCH"
+            dcache_victim = " && in_msg.Type != RubyRequestType:IFETCH"
+        else:
+            # The protocol has no ifetch access, but gem5 still issues instruction fetches:
+            # serve them as loads, from the data cache (cache_instruction stays unused).
+            ifetch_str = load_str
+            icache_victim = " && false"
+            dcache_victim = ""
+
+        template = self.open_template("mandatory_cpu_in_port.sm")
+        rc_strs = []
+        uncached = Util.uncached_direct_accesses(arch)
+        invalid_states = {str(state) for state in Util.get_invalid_states(arch)}
+        for idx, access in enumerate(rc_accesses):
+            template, dispatched = self._rc_dispatch(template, access, 6 + idx)
+            rc_strs.append(self._gen_access_str(
+                cluster, arch, access_transitions, out_ports, machine_mappings, 5, access))
+            # Served without a copy where the block is not present: no victim to make room for it
+            if dispatched and all((access, state) in uncached for state in invalid_states
+                                  if any((hit, state) in access_transitions[access] for hit in (True, False))):
+                dcache_victim += "".join(f" && in_msg.Type != RubyRequestType:{req_type}"
+                                         for req_type in Util.RC_ACCESSES[access][1])
+
+        return self.string_repl_keys(template,
                                      [self._gen_access_str(
                                          cluster, arch, access_transitions, out_ports, machine_mappings, 4, "evict"),
-                                    self._gen_access_str(
-                                             cluster, arch, access_transitions, out_ports, machine_mappings, 5, "load"),
-                                    self._gen_access_str(
-                                         cluster, arch, access_transitions, out_ports, machine_mappings, 5, "ifetch"),
-                                    self._gen_access_str(
+                                      load_str,
+                                      ifetch_str,
+                                      self._gen_access_str(
                                          cluster, arch, access_transitions, out_ports, machine_mappings, 5, "store"),
-                                      ]
+                                      icache_victim,
+                                      dcache_victim,
+                                      ] + rc_strs
                                      )
+
+    @staticmethod
+    def _rc_dispatch(template: str, access: str, key: int) -> Tuple[str, bool]:
+        """The request types of an access of release-consistency code leave the loads or the
+        stores and get their own branch (gem5 v20: only alloy-gem5's DOSequencer issues them)."""
+        types = Util.RC_ACCESSES[access][1]
+        found = False
+        for req_type in types:
+            for pattern in (r"\s*\|\|\s*in_msg\.Type == RubyRequestType:" + req_type + r"\b",
+                            r"in_msg\.Type == RubyRequestType:" + req_type + r"\s*\|\|\s*"):
+                template, n = re.subn(pattern, "", template, count=1)
+                found = found or n > 0
+        if not found:
+            return template, False  # the sequencer of this gem5 does not issue them
+        cond = " || ".join(f"in_msg.Type == RubyRequestType:{req_type}" for req_type in types)
+        last = "        } else {\n          error(\"Unexpected message type from processor\");"
+        assert last in template, "mandatory_cpu_in_port.sm changed"
+        return template.replace(last, f"        }} else if ({cond}) {{\n        ${key}$\n" + last, 1), True
 
     def _gen_access_str(
             self,
@@ -111,6 +159,7 @@ class GenCacheInPorts(TemplateHandler):
         transitions_strs = []
         hit_event_map = Util.get_local_hit_events(arch)
         invalid_states = {str(state) for state in Util.get_invalid_states(arch)}
+        direct_events = Util.get_direct_access_events(arch)
 
         for (is_hit, state_name), transitions in transition_map.items():
 
@@ -119,8 +168,12 @@ class GenCacheInPorts(TemplateHandler):
 
             op_str = ""
             entry_alloced = False
+            direct = direct_events.get((access_type, state_name)) if not is_hit else None
 
-            if state_name in invalid_states and access_type != "evict":
+            if direct is not None:
+                # Sent on without waiting for a reply: the access completes in its own transition
+                op_str += f"trigger(Event:{direct[1]}, LineAddress, getEntry(LineAddress), tbe){self.end}"
+            elif state_name in invalid_states and access_type != "evict":
                 # If we are currently in an invalid state,
                 # that is a state in which the line is not present in the cache,
                 # we need to trigger an event which allocates the cache entry
@@ -137,10 +190,13 @@ class GenCacheInPorts(TemplateHandler):
                 assert all(str(trans.final_state) == next_state for trans in transitions)
                 op_str += f"trigger(Event:alloc{next_state}, LineAddress, getEntry(LineAddress), " \
                           f"tbe){self.end}"
-            else:
+            elif not (is_hit and Util.is_rc_store(access_type)):
+                # (a hit of a store of release-consistency code writes its bytes in local_ntstoreHit)
                 op_str += slicc_tree_gen.gen_slicc_tree(transitions)
 
-            if is_hit:
+            if direct is not None:
+                op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
+            elif is_hit:
                 assert not entry_alloced, "Can't both alloc entry and hit locally"
                 _, event_name = hit_event_map[(access_type, state_name)]
                 op_str += f"{self.nl}trigger(Event:{event_name}, LineAddress, getEntry(LineAddress), " \
@@ -153,7 +209,6 @@ class GenCacheInPorts(TemplateHandler):
                     op_str += f"{self.nl}{Util.gen_silent_evict(self)}"
                 else:
                     op_str += f"{self.nl}{Util.gen_progress_str(self, True)}"
-
 
 
             elif access_type != "evict" and not is_hit and state_name not in invalid_states:

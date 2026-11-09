@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -45,9 +46,9 @@ class GenCacheTransitions(TemplateHandler):
 
     def gen_cache_transitions_str(self, arch: FlatArchitecture, in_ports: 'OrderedDict[str, str]') -> str:
 
-        invalid_states = {str(state) for state in Util.get_invalid_states(arch)}
+        invalid_states = sorted({str(state) for state in Util.get_invalid_states(arch)})
         invalid_states_str = f"{{{', '.join(invalid_states)}}}"
-        all_states = {str(state) for state in arch.get_architecture_states_verified()}
+        all_states = sorted({str(state) for state in arch.get_architecture_states_verified()})
         all_states_str = f"{{{', '.join(all_states)}}}"
         evict_transition_state = sorted({str(state) for state in Util.get_evict_trans_states(arch)})
         evict_transition_states_str = f"{{{', '.join(evict_transition_state)}}}"
@@ -67,7 +68,7 @@ class GenCacheTransitions(TemplateHandler):
         stall_str = (self.nl * 2).join(stall_strs)
 
         alloc_trans_strs = []
-        next_states = {str(state) for state in Util.get_states_following_invalid_states(arch)}
+        next_states = sorted({str(state) for state in Util.get_states_following_invalid_states(arch)})
         for next_state in next_states:
             for state in invalid_states:
                 if str(next_state).split("_")[1] != "ifetch":
@@ -96,7 +97,8 @@ class GenCacheTransitions(TemplateHandler):
         local_hit_map = Util.get_local_hit_events(arch)
         for (access, start_state), (end_state, event_name) in sorted(local_hit_map.items()):
             local_hit_trans_strs.append(self.string_repl_keys(self.open_template("transition_local_hit.sm"),
-                                                              [start_state, event_name, end_state, access]
+                                                              [start_state, event_name, end_state,
+                                                               Util.hit_action(access)]
                                                               )
                                         )
         local_hit_trans_str = (self.nl * 2).join(local_hit_trans_strs)
@@ -106,10 +108,29 @@ class GenCacheTransitions(TemplateHandler):
             remote_hit_map = Util.get_remote_hit_events_port(arch, in_port)
             for (access, end_state), event_name in sorted(remote_hit_map.items()):
                 remote_hit_trans_strs.append(self.string_repl_keys(self.open_template("transition_remote_hit.sm"),
-                                                                   [end_state, event_name, access, in_port]
+                                                                   [end_state, event_name, Util.access_kind(access),
+                                                                    in_port]
                                                                    )
                                              )
         remote_hit_trans_str = (self.nl * 2).join(remote_hit_trans_strs)
+
+        # Accesses sent on without waiting for a reply; without a copy in the cache, in the TBE;
+        # from a state without the block to one with it, the entry is allocated first
+        uncached_accesses = Util.uncached_direct_accesses(arch)
+        for (access, start_state), (end_state, event_name) in sorted(Util.get_direct_access_events(arch).items()):
+            uncached = (access, start_state) in uncached_accesses
+            alloc = start_state in invalid_states and not uncached
+            remote_hit_trans_str += (self.nl * 2) + self.string_repl_keys(
+                self.open_template("transition_direct_access.sm"),
+                [start_state, event_name, end_state,
+                 "  a_allocTBE;" + self.nl if uncached else ("  allocEntry;" + self.nl if alloc else ""),
+                 Util.direct_action_name(access, start_state, end_state),
+                 Util.access_kind(access),
+                 "  a_deallocTBE;" + self.nl if uncached else ""])
+        silent_victims = sorted(Util.silent_victim_states(arch))
+        if silent_victims:
+            remote_hit_trans_str += (self.nl * 2) + self.string_repl_keys(
+                self.open_template("transition_dealloc_victim.sm"), [invalid_states_str])
 
         return "//" + __name__ + self.nl \
                + dealloc_trans_str + (self.nl * 2) \
@@ -121,7 +142,7 @@ class GenCacheTransitions(TemplateHandler):
             + stall_str + (self.nl * 2) \
                + self.string_repl_keys(self.open_template("transition_alloc_tbe.sm"), [all_states_str]) \
                + (self.nl * 2) \
-            + self.string_repl_keys(self.open_template("transition_dealloc_tbe.sm"), [all_states_str]) \
+               + self.string_repl_keys(self.open_template("transition_dealloc_tbe.sm"), [all_states_str]) \
                + (self.nl * 2)  \
                + GenMachineTransitions.gen_progress_transition(
                     self, map(str, arch.get_architecture_states_verified())) + self.nl

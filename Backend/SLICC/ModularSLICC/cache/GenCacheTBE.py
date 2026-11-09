@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -29,11 +30,10 @@
 #
 #
 
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
-from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenMachineStruct import GenMachineStruct
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 
 
 class GenCacheTBE(TemplateHandler,):
@@ -48,7 +48,7 @@ class GenCacheTBE(TemplateHandler,):
     def __init__(self, handler_dir: str):
         TemplateHandler.__init__(self, handler_dir)
 
-    def gen_cache_tbe_str(self, arch: BaseArchitecture) -> str:
+    def gen_cache_tbe_str(self, arch: FlatArchitecture, machine_id: str) -> str:
         const_str = "//" + __name__ + self.nl
         body_strs = []
         for var_name, variable in arch.machine.variables.items():

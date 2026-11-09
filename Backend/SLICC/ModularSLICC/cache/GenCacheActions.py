@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -55,13 +56,20 @@ class GenCacheActions(TemplateHandler):
         # in the in_port definition.
         op_actions = []
         invalid_states = Util.get_invalid_states(arch)
-        access_transitions = {access: MultiDict() for access in ["load", "store", "ifetch"]}
+        access_transitions = {access: MultiDict() for access in ["load", "store", "ifetch"] + Util.rc_accesses(arch)}
         for state in invalid_states:
             for trans in state.getaccessmiss():
-                access = trans.guard
-                access = str(access)
+                access = Util.transition_access(trans)
                 access_transitions[access][str(state)] = trans
-        for _, state_map in sorted(access_transitions.items()):
+        # accesses sent on without waiting for a reply, from any state (their transition runs the action)
+        direct_events = Util.get_direct_access_events(arch)
+        for state in arch.get_architecture_stable_states():
+            if state in invalid_states:
+                continue
+            for trans in state.getaccessmiss():
+                if (Util.transition_access(trans), str(state)) in direct_events:
+                    access_transitions[Util.transition_access(trans)][str(state)] = trans
+        for access, state_map in sorted(access_transitions.items()):
             for state, transitions in sorted(state_map.items()):
                 slicc_tree_gen = GenSLICCTree(cluster, arch, True, "", out_ports, machine_mappings, allow_port_popping=False,
                                               set_final_state=False)
@@ -75,7 +83,9 @@ class GenCacheActions(TemplateHandler):
                 # Assert all the transitions have the same end state, otherwise I don't know what to do...
                 next_state = str(transitions[0].final_state)
                 assert all(str(trans.final_state) == next_state for trans in transitions)
-                action_name = GenMachineActions.get_operation_action_name(str(state), next_state)
+                action_name = Util.direct_action_name(access, str(state), next_state) \
+                    if (access, str(state)) in direct_events \
+                    else GenMachineActions.get_operation_action_name(str(state), next_state)
                 shorthand = self._gen_operation_action_shorthand(str(state), next_state)
                 op_actions.append(self.string_repl_keys(self.open_template("cache_peek_mandatory_action.sm"),
                                                         [action_name, shorthand, self.add_tabs(op_str, 2)]
@@ -96,7 +106,6 @@ class GenCacheActions(TemplateHandler):
 
         active_cache_line = Util.get_active_cache_line(arch)
 
-
         return "//" + __name__ + self.nl \
                + self.open_template("action_alloc_entry.sm") + self.nl \
                + self.open_template("action_alloc_entry-instruction.sm") + self.nl\
@@ -110,9 +119,20 @@ class GenCacheActions(TemplateHandler):
                + self.string_repl_keys(self.open_template("action_cache_remote_load_hit.sm"), [active_cache_line]) + self.nl \
                + self.string_repl_keys(self.open_template("action_cache_remote_ifetch_hit.sm"), [active_cache_line]) + self.nl \
                + self.string_repl_keys(self.open_template("action_cache_remote_store_hit.sm"), [active_cache_line]) + self.nl \
+               + self._rc_actions(arch, active_cache_line) \
                + (self.nl * 2).join(port_actions) + (self.nl * 2) \
                + (self.nl * 2).join(op_actions) + (self.nl * 2) \
                + GenMachineActions.gen_empty_action(self) + self.nl
+
+    def _rc_actions(self, arch: FlatArchitecture, active_cache_line: str) -> str:
+        actions = ""
+        if any(Util.is_rc_store(access) for access, _ in Util.get_local_hit_events(arch)):
+            actions += self.string_repl_keys(self.open_template("action_cache_local_ntstore_hit.sm"),
+                                             [active_cache_line]) + self.nl
+        for kind in sorted({Util.access_kind(access) for access, _ in Util.get_direct_access_events(arch)}):
+            actions += self.string_repl_keys(self.open_template(f"action_cache_direct_{kind}_hit.sm"),
+                                             [active_cache_line]) + self.nl
+        return actions
 
     def _gen_operation_action_shorthand(self, start_state: str, end_state: str) -> str:
         action_shorthand = f'"{start_state[0]}{end_state[0]}0"'

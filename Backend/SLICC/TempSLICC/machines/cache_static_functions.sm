@@ -5,6 +5,7 @@ void set_cache_entry(AbstractCacheEntry a);
 void unset_cache_entry();
 void set_tbe(TBE a);
 void unset_tbe();
+void wakeUpAllBuffers(Addr a);
 
 MachineID mapAddressToMachine(Addr addr, MachineType mtype);
 
@@ -63,7 +64,7 @@ void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
 AccessPermission getAccessPermission(Addr LineAddress) {
   TBE tbe := TBEs[LineAddress];
   if (is_valid(tbe)) {
-    return L1Cache_State_to_permission(tbe.TBEState);
+    return $2$_State_to_permission(tbe.TBEState);
   }
   Entry cache_entry := getEntry(LineAddress);
   if (is_valid(cache_entry)) {
@@ -75,7 +76,7 @@ AccessPermission getAccessPermission(Addr LineAddress) {
 
 void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
   if (is_valid(cache_entry)) {
-    cache_entry.changePermission(L1Cache_State_to_permission(state));
+    cache_entry.changePermission($2$_State_to_permission(state));
   }
 }
 

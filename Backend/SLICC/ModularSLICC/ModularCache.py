@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -54,11 +55,11 @@ class ModularCache(GenCacheBase):
             # Write (indented) body
             slicc_file.write(
                 self.add_tabs(
-                    ''.join([self.gen_cache_state_decl_str(arch) + self.nl,
+                    ''.join([self.gen_cache_state_decl_str(arch, machine_id) + self.nl,
                              self.gen_cache_events_str(arch, in_ports) + self.nl,
                              self.gen_cache_struct_str(arch) + self.nl,
-                             self.gen_cache_tbe_str(arch) + self.nl,
-                             self.gen_cache_static_fns_str(arch) + self.nl,
+                             self.gen_cache_tbe_str(arch, machine_id) + self.nl,
+                             self.gen_cache_static_fns_str(arch, machine_id) + self.nl,
                              self.gen_cache_out_ports_str(out_ports) + self.nl,
                              self.gen_cache_in_ports_str(cluster, arch, in_ports, out_ports, id_mapping) + self.nl,
                              self.gen_cache_actions_str(cluster, arch, in_ports, out_ports, id_mapping) + self.nl,
