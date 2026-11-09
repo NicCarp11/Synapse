@@ -172,6 +172,9 @@ class BaseNetwork(NetworkType):
 
     def __init__(self):
         self.network_node: CommonTree = None
+        # Network names in declaration order, extended by merge_networks (the back end numbers the
+        # virtual networks in this order, the same for every machine of the system)
+        self.network_order: List[str] = []
 
         self.ordered_networks: Dict[str, Channel] = {}
         self.unordered_networks: Dict[str, Channel] = {}
@@ -189,6 +192,8 @@ class BaseNetwork(NetworkType):
         self.network_node = network
         for channel_obj in network.getChildren():
             channel_def = channel_obj.getChildren()
+            if str(channel_def[1]) not in self.network_order:
+                self.network_order.append(str(channel_def[1]))
 
             if str(channel_def[0]) == self.k_unordered and str(channel_def[1]) not in self.unordered_networks:
                 Debug.perror("Network has been declared to be ordered before",
@@ -272,6 +277,7 @@ class BaseNetwork(NetworkType):
                     AuxStateHandler.cond_rename_operation(msg_var_object, cur_const, new_const)
 
     def merge_networks(self, other: 'BaseNetwork'):
+        self.network_order += [net for net in other.network_order if net not in self.network_order]
         self.ordered_networks.update(other.ordered_networks)
         self.unordered_networks.update(other.unordered_networks)
 
