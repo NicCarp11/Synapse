@@ -1,0 +1,20 @@
+# S3, multi-host CXL: two compute nodes share the memory of a CXL memory pool. The pool's directory
+# manages the compute nodes' LLCs with CXL; each LLC manages the L1s of its cores with MESI.
+system: MN
+
+rack:
+  nodes:
+    - cxl_memory_pool:
+        nodes:
+          - memory: {capacity: 8GiB}
+          - directory: {protocol: CXL}
+    - compute_node:
+        count: 2
+        nodes:
+          - LLC: {protocol: MESI, policy: WB_INCL, capacity: 8MiB}
+          - core:
+              count: 9
+              nodes:
+                - L1: {capacity: 256KiB}
+        interconnect: {connects: [LLC, core], type: direct, latency: 5ns}
+  interconnect: {connects: [cxl_memory_pool, compute_node], type: direct, latency: 70ns, flit_size: 72B}

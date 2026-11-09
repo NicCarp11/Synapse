@@ -1,0 +1,19 @@
+# S2, NUMA: four sockets in a ring, each with a quarter of the memory and a slice of the
+# directory. The memory is interleaved over the sockets by cache line; the directory slices manage
+# the last-level caches of all the sockets.
+system: NUMA
+
+server:
+  nodes:
+    - socket:
+        count: 4
+        nodes:
+          - memory: {capacity: 2GiB}
+          - directory: {protocol: MESI}
+          - LLC: {protocol: MESI, policy: WB_INCL, capacity: 2MiB}
+          - core:
+              count: 2
+              nodes:
+                - L1: {capacity: 64KiB}
+        interconnect: {connects: [directory, LLC, core], type: crossbar, latency: 5ns}
+  interconnect: {connects: [socket], type: ring, latency: 15ns}
