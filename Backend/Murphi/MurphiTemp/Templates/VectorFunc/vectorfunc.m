@@ -53,3 +53,16 @@ function VectorCount_$0$(var sv:$1$) : $3$$1$;
 begin
     return MultiSetCount(i:sv, true);
 end;
+
+-- .smallest(): one element of the set (MESIF picks its forwarder among the sharers)
+function SmallestElement_$0$(var sv:$1$) : $2$;
+var r: $2$;
+begin
+    undefine r;
+    for n:$2$ do
+      if isundefined(r) & MultiSetCount(i:sv, sv[i] = n) = 1 then
+        r := n;
+      endif;
+    endfor;
+    return r;
+end;

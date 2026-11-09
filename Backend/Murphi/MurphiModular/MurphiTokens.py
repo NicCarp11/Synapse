@@ -125,7 +125,8 @@ class MurphiTokens:
         "clear": "ClearVector_",
         "contains": "IsElement_",
         "empty": "HasElement_",
-        "count": "VectorCount_"
+        "count": "VectorCount_",
+        "smallest": "SmallestElement_"
     }
 
     ## GenPCCToMurphi

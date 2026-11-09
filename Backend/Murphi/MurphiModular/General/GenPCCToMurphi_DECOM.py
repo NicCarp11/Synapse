@@ -47,6 +47,9 @@ from Backend.Murphi.MurphiModular.General.GenDataTypes import GenDataTypes
 #from Backend.Murphi.MurphiModular.General.GenPCCToMurphi import GenPCCToMurphi
 
 
+from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess
+
+
 class GenPCCtoMurphi_Rev(GenDataTypes, GenMurphiAccess, Debug):
     set_func = {
         "add": "_mod_element",
@@ -54,7 +57,8 @@ class GenPCCtoMurphi_Rev(GenDataTypes, GenMurphiAccess, Debug):
         "clear": "_clear_vector",
         "contains": "_mod_element",
         "empty": "_mod_element",
-        "count": "_vector_count"
+        "count": "_vector_count",
+        "smallest": "_vector_count"
     }
 
     set_func_str = {
@@ -63,7 +67,8 @@ class GenPCCtoMurphi_Rev(GenDataTypes, GenMurphiAccess, Debug):
         "clear": "ClearVector_",
         "contains": "IsElement_",
         "empty": "HasElement_",
-        "count": "VectorCount_"
+        "count": "VectorCount_",
+        "smallest": "SmallestElement_"
     }
 
     def __init__(self, cluster: Cluster, arch: FlatArchitecture, config: BaseConfig):
@@ -128,6 +133,9 @@ class GenPCCtoMurphi_Rev(GenDataTypes, GenMurphiAccess, Debug):
 
         elif op == ProtoParserBase.k_endproc or op == ProtoParserBase.k_endwhen:
             return None
+
+        elif op in BaseAccess.Access_str_list:      # ifetch; (an access statement outside the ACCESS token)
+            return self.gen_tmp_access(op)
 
         else:
             print("Unknown operation: " + str(op))
