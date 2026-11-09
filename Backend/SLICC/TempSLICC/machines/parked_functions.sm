@@ -1,0 +1,10 @@
+// Parked messages ($0$): a message without a handler in the state of its block leaves the queue
+// (stall_and_wait) and can only be consumed in a state with a handler for its port. setState
+// notes the block that enters such a state, the transition triggered next wakes its messages.
+bool wakeUpPending, default="false";
+Addr wakeUpAddr, default="0";
+
+bool servesParked(State state) {
+  return $1$;
+}
+

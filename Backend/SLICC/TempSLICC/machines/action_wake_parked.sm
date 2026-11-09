@@ -1,0 +1,8 @@
+action(wakeUpParked, "wup", desc="Wake up the messages parked for the block that changed state") {
+  // Last action of a transition, after the message in hand has been popped: the woken messages
+  // are older than it and go back to the head of their queue.
+  if (wakeUpPending) {
+    wakeUpPending := false;
+    wakeUpAllBuffers(wakeUpAddr);
+  }
+}

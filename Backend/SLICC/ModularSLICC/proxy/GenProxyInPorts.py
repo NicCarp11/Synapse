@@ -1,22 +1,42 @@
+#  Copyright (c) 2022.  Nicolai Oswald
+#  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
+#  All rights reserved.
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions are
+#  met: redistributions of source code must retain the above copyright
+#  notice, this list of conditions and the following disclaimer;
+#  redistributions in binary form must reproduce the above copyright
+#  notice, this list of conditions and the following disclaimer in the
+#  documentation and/or other materials provided with the distribution;
+#  neither the name of the copyright holders nor the names of its
+#  contributors may be used to endorse or promote products derived from
+#  this software without specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 from collections import OrderedDict
 
-from typing import Dict
 
-from Algorithms.ControllerGeneration.CompoundBaseController.CompoundDirArchitecture import CompoundDirArchitecture
-from Algorithms.ControllerGeneration.CompoundBaseController.CompoundDirCacheArchitecture import \
-    CompoundDirCacheArchitecture
 from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
-from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenMachineInPorts import GenMachineInPorts
-from Backend.SLICC.ModularSLICC.common.GenPCCToSLICC import GenPCCToSLICC
 from Backend.SLICC.ModularSLICC.common.GenSLICCTree import GenSLICCTree
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.ClassCluster import Cluster
 from DataObjects.ClassMultiDict import MultiDict
-from DataObjects.States.ClassCompoundState import CompoundState
-from Parser.DataTypes.ClassProtoMachine import ProtoMachine
 
 
 class GenProxyInPorts(TemplateHandler):
@@ -33,43 +53,40 @@ class GenProxyInPorts(TemplateHandler):
             out_ports: 'OrderedDict[str, str]',
             machine_mappings: dict[str, str],
     ) -> str:
-        assert isinstance(arch, HHDirArchitecture) or isinstance(arch, HHDirArchitecture_L2private)
+        assert isinstance(arch, HHDirArchitecture)
         alloc_states = self._find_alloc_msgs(arch)
+        # exclusive policy: a block coming back from the tags to the data cache needs a free way too
+        placement = arch.exclusive_placement() if hasattr(arch, "exclusive_placement") else None
+        if placement is not None:
+            alloc_states |= placement[2]
         port_map = Util.get_msg_port_mapping(cluster)
         alloc_ports = dict()
         for port, msgs in port_map.items():
             guards = []
             for s, m in sorted(alloc_states):
                 if m in msgs:
-                    # alloc_ports.setdefault(port, set()).add((s, m))
                     guards.append(f"(st == State:{s} && in_msg.Type == CoherenceMessageType:{m})")
             if len(guards) > 0:
-                alloc_ports[port] = self.add_tabs(self.string_repl_keys(self.open_template("proxy_evict_block.sm"),
+                block = self.string_repl_keys(self.open_template("proxy_evict_block.sm"),
                             [" || ".join(guards), self._gen_evict_in_port(cluster, arch, out_ports, machine_mappings, f"{port}from_in")
                                                                         .encode('unicode_escape')
-                                                                        .decode("utf-8")]), 3)
+                                                                        .decode("utf-8")])
+                if placement is not None:
+                    # the entry may be in the tags: what matters is a way in the data cache
+                    block = block.replace("is_invalid(getEntry(LineAddress)) && cache.cacheAvail(LineAddress) == false",
+                                          "cache.isTagPresent(LineAddress) == false && cache.cacheAvail(LineAddress) == false", 1)
+                alloc_ports[port] = self.add_tabs(block, 3)
         return "//" + __name__ + self.nl \
                + GenMachineInPorts.gen_machine_in_ports(
                     self, cluster, arch, True, "Cache", in_ports, out_ports, machine_mappings, evict_code=alloc_ports) \
                + self.nl
 
     def _find_alloc_msgs(self, arch: HHDirArchitecture) -> set[(str, str)]:
+        # (state, message) pairs whose handler allocates the cache entry and may need a victim
         msgs = set()
         for transition in arch.get_architecture_transitions():
-            assert isinstance(transition.start_state, CompoundState)
-            state_map = None
-            invalid = False
-            for cs in transition.start_state.base_states:
-                ca = arch.get_arch_by_state(cs)
-                if ca.machine.mach_type == ProtoMachine.k_dir:
-                    assert isinstance(ca, CompoundDirCacheArchitecture)
-                    state_map = ca.dir_state_req_base_message_access_map.get(cs, {})
-                if ca.machine.mach_type == ProtoMachine.k_cache:
-                    invalid = len(ca.stable_state_access_permission_map.get(cs, {None, None})) == 0
-            assert state_map is not None
-            if transition.guard in state_map:
-                if invalid:
-                    msgs.add((str(transition.start_state), str(transition.guard)))
+            if Util.proxy_entry_alloc(arch, transition)[0]:
+                msgs.add((str(transition.start_state), str(transition.guard)))
         return msgs
 
 
