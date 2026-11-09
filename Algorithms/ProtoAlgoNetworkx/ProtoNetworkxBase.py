@@ -123,7 +123,6 @@ class ProtoNetworkxBase(TreeCopyNetworkx, ConcurrencyNetworkx):
         if self.gdbg:
             ProtoCCGraph(str(self.cache), self.cache.get_architecture_transitions())
 
-        #self.cache.dbg_sub_tree_graphs()
 
     def gen_stalling_states(self,
                             start_state_to_remote_graph_map: Dict[State_v2, List[MultiDiGraph]],
@@ -149,16 +148,6 @@ class ProtoNetworkxBase(TreeCopyNetworkx, ConcurrencyNetworkx):
 
             self.pwarning("ProtoGen takes more than ten iterations to finish. "
                           "It is likely that ProtoGen is not working correctly", iteration == 10)
-
-    def count_trans(self, state_to_graph_map: Dict[State_v2, List[MultiDiGraph]]) -> int:
-        tree_trans_list = []
-        for state in state_to_graph_map:
-            for graph in state_to_graph_map[state]:
-                tree_trans_list += self.get_transitions_from_graph(graph)
-
-        tree_trans_list = list(set(tree_trans_list))
-
-        return len(tree_trans_list)
 
     @staticmethod
     def update_state_to_graph_map(state_to_graph_map: Dict[State_v2, List[MultiDiGraph]],
@@ -298,7 +287,6 @@ class ProtoNetworkxBase(TreeCopyNetworkx, ConcurrencyNetworkx):
 
                     access_sub_tree_dict[access_sub_tree] = new_concurrent_tree
 
-                    #self.dbg_tree_graph(new_concurrent_tree)
 
         return access_sub_tree_dict
 
@@ -315,16 +303,13 @@ class ProtoNetworkxBase(TreeCopyNetworkx, ConcurrencyNetworkx):
 
             # Generate the concurrency graph
             cartesian_graph = self.cartesian_product(mod_remote_graph, final_access_tree)
-            # self.dbg_networkx_graph(cartesian_graph)
 
             # Prune the concurrency graph
             cartesian_graph = self.prune_root_access_transaction_cartesian_graph(
                 cartesian_graph, mod_remote_graph, final_access_tree)
-            # self.dbg_networkx_graph(cartesian_graph)
 
             # Generate cartesian product of graphs and update the cartesian tree
             res = self.update_stalling_tree_states(cartesian_graph)
-            #self.dbg_tree_graph(res)
             remote_trees.append(res)
         return remote_trees
 
@@ -400,10 +385,3 @@ class ProtoNetworkxBase(TreeCopyNetworkx, ConcurrencyNetworkx):
             msg_sets.add(msg_access_tuple)
 
         return msg_sets
-
-    def find_paths_to_state(self, sub_tree: MultiDiGraph, start_state: State_v2, current_state: State_v2):
-        return self.get_trans_traces(sub_tree, start_state, [current_state])
-
-
-
-

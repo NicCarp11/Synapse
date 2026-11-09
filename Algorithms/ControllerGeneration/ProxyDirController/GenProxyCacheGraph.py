@@ -89,9 +89,3 @@ class ProxyCacheGraph(TraceCheckGraph):
         # Remove all terminal node paths
         for node_path in node_paths:
             self.exec_graph.remove_nodes_from(node_path)
-
-        #ParserPCCGraph.debug_process_graph(self.exec_graph, "Dummy", True)
-
-
-
-

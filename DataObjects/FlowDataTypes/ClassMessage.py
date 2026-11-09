@@ -29,7 +29,6 @@
 from antlr3.tree import CommonTree
 from Parser.DataTypes.ClassBaseNetwork import BaseMessage
 from Parser.DataTypes.ClassBaseNetwork import Channel
-from Parser.DataTypes.ClassBaseNetwork import MsgType
 
 from Debug.Monitor.ClassDebug import Debug
 
@@ -70,17 +69,11 @@ class Message(Debug):
         return hash(self.base_msg.id)
 
     # Base_msg object is mutable, hence get functions
-    def get_id(self) -> str:
-        return str(self)
-
     def get_src(self) -> str:
         return self.msg_routing.src
 
     def get_dest(self) -> str:
         return self.msg_routing.dest
-
-    def get_msg_type(self) -> MsgType:
-        return self.base_msg.msg_type
 
     def get_vc(self) -> Channel:
         return self.base_msg.vc

@@ -1,7 +1,7 @@
 #  Copyright (c) 2021.  Nicolai Oswald
 #  Copyright (c) 2021.  University of Edinburgh
 #  All rights reserved.
-# 
+#
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
 #  met: redistributions of source code must retain the above copyright
@@ -12,7 +12,7 @@
 #  neither the name of the copyright holders nor the names of its
 #  contributors may be used to endorse or promote products derived from
 #  this software without specific prior written permission.
-# 
+#
 #  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 #  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
 #  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -24,7 +24,7 @@
 #  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 
 from antlr3.tree import CommonTree
 
@@ -129,19 +129,6 @@ class ProcessStateTransFlowTree(ProcessTransFlowTree):
                 new_node_name = str(prev_end_node) + "_" + str(node.object_sequence[0].getChildren()[1])
                 return SSPState(new_node_name)
 
-    def resolve_name_conflict(self, new_node_name: str) -> str:
-        if new_node_name not in self.state_names:
-            self.state_names.append(new_node_name)
-            return new_node_name
-
-        count = 0
-        while True:
-            gen_node_name = new_node_name + "_" + str(count)
-            if gen_node_name not in self.state_names:
-                self.state_names.append(gen_node_name)
-                return gen_node_name
-            count += 1
-
     # Function updates all state nodes in the dictionary
     def update_state_node_assignments(self, new_node: SSPState, old_nodes: List[SSPState]):
         for trans_object, state_node in self.trans_object_start_state_id_map.items():
@@ -156,9 +143,6 @@ class ProcessStateTransFlowTree(ProcessTransFlowTree):
         start_nodes = list((node for node, in_degree in self.trans_object_graph.in_degree() if in_degree == 0))
         self.perror("To many start nodes in process tree", len(start_nodes) == 1)
         return start_nodes[0]
-
-    def get_terminal_nodes_trans_graph(self) -> List[ProtoTransGraphObject]:
-        return list((node for node, out_degree in self.trans_object_graph.out_degree() if out_degree == 0))
 
     def breath_first_search_trans_graph(self,
                                         cur_node: ProtoTransGraphObject,

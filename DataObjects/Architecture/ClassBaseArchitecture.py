@@ -29,7 +29,7 @@
 # Instead of having everything in the parser gen_make for every architecture a single object that contains all
 # important information
 
-from typing import Set, Dict
+from typing import Set
 
 from Debug.Graphv.ProtoCCGraph import ProtoCCGraph
 
@@ -39,7 +39,6 @@ from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from DataObjects.FlowDataTypes.ClassEvent import EventNetwork
 from Parser.DataTypes.ClassProtoMachine import ProtoMachine
 from DataObjects.Architecture.ClassGlobalBaseArchitecture import GlobalBaseArchitecture
-from DataObjects.FlowDataTypes.ClassBaseAccess import Access
 
 ## Documentation for a function.
 #
@@ -76,12 +75,6 @@ class BaseArchitecture(TreeNetworkx):
         self.stable_states = other.stable_states
         self.state_sub_tree_dict = other.state_sub_tree_dict
 
-    def copy_base_architecture_constants(self, other: 'BaseArchitecture'):
-        self.arch_name = other.arch_name
-        self.machine = other.machine
-        self.event_network = self.machine.event_network
-        self.global_arch = other.global_arch
-
     def update_base_fsm(self, init_state: State_v2, stable_states: Set[State_v2], transitions: Set[Transition_v2]):
         self.init_state = init_state
         self.gen_tree_from_trans(stable_states, transitions)
@@ -99,9 +92,6 @@ class BaseArchitecture(TreeNetworkx):
         # Update the machine cnt constant
         self.machine.update_mach_cnt_constant_name(new_sub_id)
 
-    def update_arch_name(self, new_sub_id: str):
-        self.arch_name += new_sub_id
-
     def update_variable_names(self, new_sub_id: str):
         # Update variables in machine container and then change names of all modified variables in transition operations
         for variable_name in self.machine.update_variable_names(new_sub_id):
@@ -112,11 +102,6 @@ class BaseArchitecture(TreeNetworkx):
         for event in self.event_network.event_issue:
             self.replace_transitions_objects(event, event + new_sub_id)
 
-    def update_dict_names(self, old_to_new_identifier_dict: Dict[str, str]):
-        for old_identifier in old_to_new_identifier_dict:
-            self.replace_transitions_objects(old_identifier, old_to_new_identifier_dict[old_identifier])
-
     def replace_transitions_objects(self, var_name: str, new_var_name: str):
         for transition in self.get_architecture_transitions():
             transition.rename_operation(var_name, new_var_name)
-

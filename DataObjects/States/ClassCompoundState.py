@@ -58,5 +58,3 @@ class CompoundState(State_v2):
     def __eq__(self, other):
         return hash(self) == hash(other)
 
-    def get_compound_states(self) -> Tuple[State_v2, ...]:
-        return tuple(state for proxy_dir_state in self.base_states for state in proxy_dir_state.get_compound_states())

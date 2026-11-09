@@ -87,11 +87,11 @@ class EventNetwork:
             # Clear old dict entry
             event_dict.pop(event_name)
 
+    def merge_event_networks(self, other: 'EventNetwork'):
+        self.event_issue.update(other.event_issue)
+        self.event_ack.update(other.event_ack)
+
     def exist_events(self) -> bool:
         if self.event_issue or self.event_ack:
             return True
         return False
-
-    def merge_event_networks(self, other: 'EventNetwork'):
-        self.event_issue.update(other.event_issue)
-        self.event_ack.update(other.event_ack)

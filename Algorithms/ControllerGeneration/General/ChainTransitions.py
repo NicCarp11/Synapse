@@ -56,6 +56,3 @@ class ChainTransitions:
         start_transition.final_state = final_transition.final_state
 
         return start_transition
-
-
-

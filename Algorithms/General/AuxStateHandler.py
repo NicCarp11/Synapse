@@ -32,7 +32,7 @@
 #
 
 from antlr3.tree import CommonTree
-from typing import List, Dict
+from typing import List
 
 from Parser.ProtoCCcomTreeFct import toStringList
 from Parser.CopyReducedCommonTree import copy_tree
@@ -50,7 +50,7 @@ class AuxStateHandler:
     def cond_operations_var_rename(operations: List[CommonTree], var_name: str, new_var_name: str,
                                    terminal_token_names: List[str] = None) -> bool:
         mutated = False
-        
+
         if not terminal_token_names:
             terminal_token_names = []
 

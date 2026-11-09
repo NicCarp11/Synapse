@@ -25,13 +25,11 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-from typing import List, Union, Tuple
+from typing import List, Union
 
 from networkx import MultiDiGraph
 
 from Algorithms.ControllerGeneration.NetworkxGeneral.TreeBaseNetworkx import TreeBaseNetworkx
-from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
-from DataObjects.States.ClassStatev2 import State_v2
 from Algorithms.ControllerGeneration.NetworkxGeneral.CompoundGraphsNetworkx import CompoundGraphsNetworkx
 from DataObjects.FlowDataTypes.ClassMessage import Message, BaseMessage
 from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess
@@ -55,12 +53,6 @@ class NestTreeNetworkx(NestedDeferMessage, TreeBaseNetworkx):
         remote_proxy_graph = self.copy_graph(remote_proxy_graph)
         local_dir_graph = self.copy_graph(local_dir_graph)
 
-        remote_root = self.get_root_node_by_attribute(remote_proxy_graph)
-        remote_terminal = self.get_terminal_nodes_by_attribute(remote_proxy_graph)
-
-        dir_root = self.get_root_node_by_attribute(local_dir_graph)
-        dir_terminal = self.get_terminal_nodes_by_attribute(local_dir_graph)
-
         # Get the guards of the graphs
         proxy_guard = self.get_graph_guard(remote_proxy_graph)
         dir_guard = self.get_graph_guard(local_dir_graph)
@@ -78,17 +70,9 @@ class NestTreeNetworkx(NestedDeferMessage, TreeBaseNetworkx):
         root_transitions = self.get_transitions_by_start_state(graph, root_node)
 
         proxy_guard = list(set([trans.guard for trans in root_transitions]))
-        if len(proxy_guard) >1:
-            print("toto")
         Debug.perror("More than one type of transition guard found in root state. Unable to Nest Graphs",
                      len(proxy_guard) == 1)
         return proxy_guard[0]
-
-    def add_new_root_transitions_to_graph(self, graph: MultiDiGraph, graph_node_tuple: Tuple[State_v2, List[State_v2]],
-                                          root_transitions: List[Transition_v2]):
-        self.add_transition_to_graph(graph, root_transitions)
-        self.set_root_node_attribute(graph, graph_node_tuple[0])
-        self.set_terminal_nodes_attribute(graph, graph_node_tuple[1])
 
     def copy_graph(self, graph: MultiDiGraph) -> MultiDiGraph:
         root_node = self.get_root_node_by_attribute(graph)

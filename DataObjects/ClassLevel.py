@@ -29,11 +29,9 @@
 # Contains two architectures, cache and associated directory, and runs all the basic pre processing algorithms
 # A class level is the input to the HieraGen and ProtoGen algorithm
 
-from graphviz import Digraph
 from typing import List
 
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
-from DataObjects.ClassStateTuple import StateTuple
 
 from Debug.Monitor.ClassDebug import Debug
 from Algorithms.ModelChecker.NetworkxModelChecker import NetworkxModelChecker
@@ -113,26 +111,7 @@ class Level(NetworkxModelChecker, Debug):
 
         # Do renaming if required
 
-        ### HIERAGEN SUPPORT
-        #self._generate_dir_access_classification_map(self.state_tuple_list)
 
-
-        '''
-        if not snoop:
-            # Rename directory forwarded messages, so that caches can infer global serialization from forwarded messages
-            msg_renaming = MsgSerializationRenaming(self.cache.state_sets,
-                                                    self.cache.trans_traces,
-                                                    self.directory.state_sets,
-                                                    self.parser.eventTypes)
-
-            # Complete all eviction ssp_transitions at the directory level to account for concurrency
-            complete_transitions(self.cache.state_sets, self.directory.state_sets,
-                                 self, True)
-
-            # TODO: EVICT PARALLELISATION, This will benefit from the model checker
-            # Only handle silent upgrades and different request messages
-            complete_transitions(self.cache.state_sets, self.directory.state_sets, self, False)
-        '''
 
         # Update broadcast tokens to broadcast only in level
 
@@ -142,62 +121,14 @@ class Level(NetworkxModelChecker, Debug):
         # Murphi
         self.unique_id = []
 
-        # Murphi related updating of operations with level ID
-        #self.update_mach_name_operation_append(level_id)
 
     # Updates the global architecture mapping
-    def update_global_arch(self, new_global_arch):
-        self.global_arch = new_global_arch
-
     def get_architectures(self) -> List[FlatArchitecture]:
         if self.mem:
             return [self.cache, self.directory, self.mem]
         return [self.cache, self.directory]
 
-    def replace_transition_objects(self, var_name: str, new_var_name: str):
-        for arch in self.get_architectures():
-            arch.replace_transitions_objects(var_name, new_var_name)
-
     ####################################################################################################################
     # Drawing functions
     ####################################################################################################################
 
-    def draw_system_tuples(self, state_tuples: List[StateTuple]):
-        self._draw_system_tuples(state_tuples, self._draw_assymmetric_system_tuple)
-
-    def draw_symmetric_system_tuples(self, state_tuples: List[StateTuple]):
-        self._draw_system_tuples(state_tuples, self._draw_symmetric_system_tuple)
-
-    def _draw_system_tuples(self, state_tuples: List[StateTuple], edge_gen_func):
-        edges = {}
-        graph = Digraph(comment=self.level_name, engine='dot')
-
-        prev_tuples = [self.init_tuple]
-        next_tuples = []
-
-        while prev_tuples:
-            for state_tuple in state_tuples:
-                if state_tuple.prev_tuple in prev_tuples:
-                    next_tuples.append(state_tuple)
-
-            for next_tuple in next_tuples:
-                edge = edge_gen_func(next_tuple)
-                if str(edge) not in edges:
-                    edges[str(edge)] = edge
-                    graph.edge(*edge[0],
-                               label=edge[1])
-
-            prev_tuples = next_tuples
-            next_tuples = []
-
-        graph.render('level_state_tuples/' + self.level_name + '.gv', view=True)
-
-    @staticmethod
-    def _draw_assymmetric_system_tuple(tuple):
-        return [(tuple.draw_str_start_state(), tuple.draw_str_final_state()), tuple.str_access_trace()]
-
-    @staticmethod
-    def _draw_symmetric_system_tuple(tuple):
-        return [(tuple.symmetric_str_start_state(),
-                 tuple.symmetric_str_final_state()),
-                tuple.symmetric_str_access_trace()]

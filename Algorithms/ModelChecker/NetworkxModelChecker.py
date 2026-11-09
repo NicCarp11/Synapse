@@ -41,7 +41,6 @@ from DataObjects.ClassTrace import Trace
 from Algorithms.ModelChecker.TraceChecker.TraceCheckGraph import TraceCheckGraph
 
 from Debug.Monitor.ClassDebug import Debug
-from Debug.Graphv.ParserNetworkxGraph import ParserPCCGraph
 from collections import Counter, OrderedDict
 
 
@@ -128,9 +127,6 @@ class SystemStateSpaceChecker:
 
             cur_system_state_list = next_system_state_list
             next_system_state_list = []
-
-    def check_ordering_string(self, new_sytem_tuples):
-        pass
 
     def find_next_system_states(self, system_tuple: SystemTuple):
         new_system_tuple_list = self.gen_new_system_tuples(system_tuple)
@@ -274,7 +270,6 @@ class NetworkxModelChecker(Debug):
         networkx_checker_result: SystemStateSpaceChecker = self.run_checker(arch_set)
         self.get_state_tuples(networkx_checker_result)
 
-        #self.custom_prune()
 
         # Sort the state tuple list
         self.state_tuple_list.sort(key=lambda x: str(x.get_access_trace()))
@@ -286,16 +281,6 @@ class NetworkxModelChecker(Debug):
             arch.gen_system_state_access_map(self.state_tuple_list)
 
     # This doesn't work for non inclusive protocols like RCC
-    def custom_prune(self):
-        revised_state_tuple_list = []
-        for system_tuple in self.state_tuple_list:
-            dir = system_tuple.system_tuple[-1]
-            if dir.final_state == dir.arch.init_state:
-                remote_states = set([cache.final_state for cache in system_tuple.system_tuple[0:-1]])
-                if len(remote_states) > 1 or list(remote_states)[0] != system_tuple.system_tuple[0].arch.init_state:
-                    continue
-            revised_state_tuple_list.append(system_tuple)
-
     def run_checker(self, arch_set: Set[FlatArchitecture]) -> SystemStateSpaceChecker:
         covered_traces = 0
         mach_count = 0
@@ -360,7 +345,6 @@ class NetworkxModelChecker(Debug):
 
                     evict_tree.add_edge(start_state_space_tuple, final_state_space_tuple)
 
-        #ParserPCCGraph.debug_process_graph(evict_tree, "Dummy", True)
 
         return list(nx.bfs_tree(evict_tree, networkx_checker_result.init_state_space_tuple, reverse=True).nodes)
 
@@ -368,7 +352,6 @@ class NetworkxModelChecker(Debug):
         self.valid_system_states: List[SystemStateTupleIdentifier] = self.build_evict_tree(networkx_checker_result)
         for system_state_space in networkx_checker_result.state_space_dict:
             for system_tuple in networkx_checker_result.state_space_dict[system_state_space]:
-                #if SystemStateTupleIdentifier(system_tuple.get_start_state_tuple(), system_tuple) in self.valid_system_states:
                 if self.check_system_tuple_is_valid_system_state(system_tuple):
                     if system_tuple.get_traces():
                         self.state_tuple_list.append(system_tuple)
@@ -392,10 +375,6 @@ class NetworkxModelChecker(Debug):
                 return True
         return False
 
-
-    def update_state_tuple_mach_archs(self, old_arch, new_arch):
-        for state_tuple in self.state_tuple_list:
-            state_tuple.update_machine_archs(old_arch, new_arch)
 
     @staticmethod
     def check_trace_coverage(system_tuple: SystemTuple):

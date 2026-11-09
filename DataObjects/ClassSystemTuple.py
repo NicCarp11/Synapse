@@ -48,9 +48,6 @@ class SystemTuple:
     def __hash__(self):
         return hash(tuple(hash(mach) for mach in self.system_tuple))
 
-    def make_simple_set(self):
-        return tuple(sorted([hash(mach) for mach in self.system_tuple])).__hash__()
-
     def __eq__(self, other):
         if isinstance(other, SystemTuple):
             return hash(self) == hash(other)
@@ -71,11 +68,6 @@ class SystemTuple:
             if mach.cur_trace:
                 mach_traces.append(mach.cur_trace)
         return mach_traces
-
-    def update_machine_archs(self, old_arch: FlatArchitecture, new_arch: FlatArchitecture):
-        for mach in self.system_tuple:
-            if mach.arch == old_arch:
-                mach.arch = new_arch
 
     def get_machine_architectures(self) -> List[FlatArchitecture]:
         arch_list = []
@@ -106,26 +98,6 @@ class SystemTuple:
             mach_traces = [mach.cur_trace for mach in self.system_tuple]
         return [mach_trace for mach_trace in mach_traces if mach_trace
                 and isinstance(mach_trace.init_guard, (BaseAccess.Access_type, Event))]
-
-    def get_arch_remote_trace(self, arch: FlatArchitecture = None) -> List[Trace]:
-        if arch:
-            mach_traces = [mach.cur_trace for mach in self.get_arch_machines(arch)]
-        else:
-            mach_traces = [mach.cur_trace for mach in self.system_tuple]
-        return [mach_trace for mach_trace in mach_traces if mach_trace
-                and not isinstance(mach_trace.init_guard, BaseAccess.Access_type)]
-
-    def sort_machines_id(self) -> Tuple[Machine]:
-        # Get list of architectures first:
-        mach_list = list(self.system_tuple)
-        mach_arch_sort = tuple(sorted(mach_list, key=lambda machine: (str(machine.arch), id(machine.covered_traces))))
-        return mach_arch_sort
-
-    def find_traces(self, trace: Trace) -> bool:
-        for mach in self.system_tuple:
-            if trace == mach.cur_trace:
-                return True
-        return False
 
     def get_arch_start_state_pairs(self) -> Tuple[Tuple[FlatArchitecture, 'State_v2'], ...]:
         return tuple([(mach.arch, mach.start_state) for mach in self.system_tuple])
@@ -175,11 +147,3 @@ class SystemTuple:
             return access_str + "; " + guard_list[:-2]
         else:
             return access_str
-
-    def system_tuple_id_str(self):
-        sorted_tuple = self.sort_machines_id()
-        sys_id = ""
-        for mach in sorted_tuple:
-            sys_id += mach.arch.arch_name + "_" + mach.arch.arch_name + "; "
-
-        return sys_id[:-2]

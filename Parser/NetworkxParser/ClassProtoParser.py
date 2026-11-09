@@ -142,10 +142,6 @@ class ProtoParser(Debug):
             method = getattr(self, method_fct, lambda: '__UnknownNode__')
             method(obj)
 
-    def _UnknownNode(self, obj):
-        self.perror("Unknown Node Identifier")
-        self.perror(obj.getText())
-
 ########################################################################################################################
 # SECTIONS
 ########################################################################################################################
@@ -212,9 +208,6 @@ class ProtoParser(Debug):
 
     ## The network messages and internal events must not have identical names. Otherwise they cannot be distinguished
     #
-    def _network_event_guard_sanity_check(self):
-        pass
-
     def _find_minimal_message_type(self, transition: Transition_v2) -> BaseMessage:
         msg_var_dict = self._message_variable_set(str(transition.guard))
         op_var_set = self._extract_guard_variabels(transition)
@@ -261,4 +254,3 @@ class ProtoParser(Debug):
     def _pArchTable(self):
         for arch in self.machines:
             ProtoCCTablePrinter().ptransitiontable(list(self.architectures[arch].get_architecture_transitions()))
-

@@ -129,16 +129,6 @@ class ProtoMachine:
             return True
         return False
 
-    def check_dir(self) -> bool:
-        if self.mach_type == self.k_dir:
-            return True
-        return False
-
-    def check_mem(self) -> bool:
-        if self.mach_type == self.k_mem:
-            return True
-        return False
-
     ####################################################################################################################
     ### Merge the system descriptors
     ####################################################################################################################
@@ -188,4 +178,3 @@ class ProtoMachine:
             self.variables_init_val.update(other.variables_init_val)
 
             self.event_network.merge_event_networks(other.event_network)
-

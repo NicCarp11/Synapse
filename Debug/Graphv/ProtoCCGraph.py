@@ -42,8 +42,6 @@ class ProtoCCGraph:
     TextFontSize = '15'
 
     def __init__(self, header: str, transitions: List[Transition_v2], option=0):
-        # Compass points currently not used, as not more than 4 loops were observed
-        # CompassPoints=["n","ne","e","se","s","sw","w","nw","c","_"]
 
         # Create FSM graphs
         self.graph = Digraph(header, filename=(header + '.gv'), engine='dot')
@@ -64,7 +62,6 @@ class ProtoCCGraph:
         self.graph.attr(label=header, fontsize=self.TextFontSize)
 
         self._ptransitions(transitions)
-        # self.graph.view(header, os.getcwd(), False)
 
         try:
             self.graph.render(header, os.getcwd())
@@ -74,7 +71,7 @@ class ProtoCCGraph:
         for entry in transitions:
             start_state, final_state, access, p_in_msg, p_in_event, p_out_msg, p_out_event, p_cond = \
                 ProtoCCTablePrinter.outtransition(entry)
-            
+
             guardstr = ""
             if access:
                 guardstr += "*" + access

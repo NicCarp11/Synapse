@@ -52,18 +52,3 @@ class ArchitectureClassification:
             return arch_name
         else:
             assert 0, "Unknown architecture classification"
-
-    def test_cache(self) -> bool:
-        if self.arch_type == self.k_cache:
-            return True
-        return False
-
-    def test_dir(self) -> bool:
-        if self.arch_type == self.k_dir:
-            return True
-        return False
-
-    def test_mem(self) -> bool:
-        if self.arch_type == self.k_mem:
-            return True
-        return False

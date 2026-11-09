@@ -111,14 +111,6 @@ class BaseAccess:
 
         return access_type
 
-    def copy_base_access(self) -> 'BaseAccess':
-        new_base_access = BaseAccess()
-        new_base_access.merge_base_access(self)
-        return new_base_access
-
     def merge_base_access(self, other: 'BaseAccess'):
         self.access_map.update(other.access_map)
-        self.access_to_base_access_map.update(other.access_to_base_access_map)
-
-    def update_base_access(self, other):
         self.access_to_base_access_map.update(other.access_to_base_access_map)

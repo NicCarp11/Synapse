@@ -29,7 +29,6 @@
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.ClassLevel import Level
 
-from DataObjects.Architecture.ClassFiniteStateMachine import FiniteStateMachine
 from Algorithms.ControllerGeneration.ProxyDirController.GenProxyDirStateMachine import ProxyDirStateMachine
 
 from Debug.Monitor.ClassDebug import Debug
@@ -49,16 +48,12 @@ class ProxyDirArchitecture(FlatArchitecture, ProxyDirStateMachine):
 
         self.update_base_fsm(self.directory.init_state, set(self.proxy_dir_stable_states), set(self.proxy_dir_trans))
 
-        fsm_states = self.get_architecture_states()
-        fsm_trans = self.get_architecture_transitions()
-
         # Register the new proxy directory controller as the directory of the level replacing the previous directory
         arch_level.directory = self
 
         Debug.psection(f"ProxyDir controller for {arch_level.parser.filename}")
         ProtoCCTablePrinter().ptransitiontable(list(self.get_architecture_transitions()))
 
-        #self.dbg_tree_graph(self.gen_graph(list(fsm_trans)))
 
         # The architecture is
     def get_arch_list(self):
@@ -84,6 +79,3 @@ class ProxyDirArchitecture(FlatArchitecture, ProxyDirStateMachine):
     ####################################################################################################################
     # Hierarchical Functions
     ####################################################################################################################
-    def get_flat_base_architecture(self):
-        return self.directory
-

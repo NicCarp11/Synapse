@@ -30,7 +30,6 @@ from typing import List
 
 from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess
 from DataObjects.Transitions.ClassTransitionv2 import Event
-from Parser.ProtoCCcomTreeFct import objListToStringList
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 
 from Debug.Monitor.ClassDebug import Debug
@@ -43,9 +42,6 @@ class ProtoCCTablePrinter(Debug):
 
     def __init__(self, debug_enable: bool = True):
         Debug.__init__(self, debug_enable)
-
-    def ptransition(self, transition: Transition_v2):
-        self.ptable(self.TransFormat, [self.outtransition(transition)])
 
     def ptransitiontable(self, transitions: List[Transition_v2]):
         states = []
@@ -98,21 +94,3 @@ class ProtoCCTablePrinter(Debug):
 
         return [p_start_state, p_final_state, p_access, p_in_msg, p_event, p_out_msg, p_out_event, p_cond]
 
-    @staticmethod
-    def ptransaction(transactions):
-        for transaction in transactions:
-            ProtoCCTablePrinter().ptransitions(transaction.gettransitions())
-
-    def ptransitions(self, transitions):
-        for transition in transitions:
-            ProtoCCTablePrinter().ptransition(transition)
-            self.pdebug('$')
-            ops = objListToStringList(transition.getoperation())
-            for entry in ops:
-                self.pdebug(entry)
-            self.pdebug()
-
-    def pstates(self, states):
-        for state in states:
-            self.p_header('$$$$' + state.getstatename())
-            self.ptransitions(state.gettransitions())

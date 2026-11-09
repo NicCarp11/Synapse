@@ -55,8 +55,7 @@ class BaseConfig(Debug):
     enable_fifo: bool = False
 
     # Enable atomic events
-    #atomic_events: bool = True
-    atomic_events: bool = False
+    atomic_events: bool = True
 
     # Enable simple ordered network (These networks are total ordered, but much faster in simulation)
     ordered_network_type: str = "Bus"

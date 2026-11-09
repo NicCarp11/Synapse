@@ -32,11 +32,8 @@ import networkx as nx
 from networkx import MultiDiGraph
 
 from DataObjects.States.ClassStatev2 import State_v2
-from Deprecated.ClassTransition import Transition
-
+from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from Algorithms.ControllerGeneration.NetworkxGeneral.TreeBaseNetworkx import TreeBaseNetworkx
-
-
 from Debug.Monitor.ClassDebug import Debug
 
 
@@ -174,7 +171,7 @@ class ConcurrencyNetworkx(TreeBaseNetworkx, Debug):
         return new_state
 
     @staticmethod
-    def gen_msg_set(access_transitions_list: List[List[Transition]]) -> Set[Tuple[Tuple[str, str]]]:
+    def gen_msg_set(access_transitions_list: List[List[Transition_v2]]) -> Set[Tuple[Tuple[str, str]]]:
         msg_sets = set()
         for msg_access_transitions in access_transitions_list:
             msg_access_tuple = tuple(msg_access_transition.get_msg_hash()

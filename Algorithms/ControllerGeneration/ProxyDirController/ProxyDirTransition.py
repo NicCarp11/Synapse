@@ -153,7 +153,6 @@ class ProxyDirTransition(Transition_v2):
     def get_start_final_state(proxy_dir_trans_cluster: List[Transition_v2],
                               mach_trace: Trace):
         trans_list = [trans for trans in proxy_dir_trans_cluster if trans in mach_trace.trace_trans]
-        #trans_list = proxy_dir_trans_cluster
         if trans_list:
             start_state = trans_list[0].start_state
             final_state = trans_list[-1].final_state
@@ -207,7 +206,7 @@ class ProxyDirTransition(Transition_v2):
         msg_var_name = str(remove_operation[0].children[0])
         msg_name = str(remove_operation[1][0])
         new_msg_var_name = msg_var_name + "_" + msg_name
-        remove_send_func = self.remove_send_func(remove_operation[0], prev_transition)
+        self.remove_send_func(remove_operation[0], prev_transition)
 
         # Update the variable name to avoid it to be overwritten
         AuxStateHandler.save_rename_var(prev_transition.operations, remove_operation[0], msg_var_name,

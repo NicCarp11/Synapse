@@ -222,9 +222,3 @@ class SSPArchitecture(BaseArchitecture, Debug):
 
         self.perror("Not all possible events were defined for every stable state: " + str(state_event_dict),
                     not len(state_event_dict))
-
-
-
-
-
-

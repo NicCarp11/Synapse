@@ -50,4 +50,3 @@ def copy_node(node: CommonTree) -> CommonTree:
     for child in node.children:
         new_tree_node.addChild(copy_node(child))
     return new_tree_node
-

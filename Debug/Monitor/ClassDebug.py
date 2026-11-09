@@ -26,7 +26,7 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from colorama import init, Fore, Style
+from colorama import Fore, Style
 from tabulate import tabulate
 
 from typing import List
@@ -48,17 +48,9 @@ class Debug:
         if self.dbg:
             print(debug)
 
-    def pdebugwarning(self, warning: str = ''):
-        if self.dbg:
-            print(Fore.YELLOW + warning + Style.RESET_ALL)
-
     @ staticmethod
     def psection(section_name: str = ''):
         print(Fore.CYAN + section_name + Style.RESET_ALL)
-
-    @staticmethod
-    def ptext(text: str = ''):
-        print(text)
 
     @ staticmethod
     def pwarning(warning: str = '', cond: bool = True):
@@ -72,10 +64,6 @@ class Debug:
             print('Pause')
         assert cond, error
 
-    @ staticmethod
-    def psuccess(successmsg: str = ''):
-        print(Fore.GREEN + successmsg + Style.RESET_ALL)
-
     def ptable(self, header: List[str], body: List[List[str]]):
         if self.dbg:
             assert isinstance(header, list) and isinstance(body, list)
@@ -87,3 +75,7 @@ class Debug:
                     header[ind] += Style.RESET_ALL
 
             print(tabulate(body, headers=header))
+
+    @ staticmethod
+    def psuccess(successmsg: str = ''):
+        print(Fore.GREEN + successmsg + Style.RESET_ALL)

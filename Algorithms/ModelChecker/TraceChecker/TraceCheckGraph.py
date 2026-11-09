@@ -41,8 +41,6 @@ from DataObjects.FlowDataTypes.ClassEvent import Event
 from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess
 
 from Parser.NetworkxParser.ClassProtoParserBase import ProtoParserBase
-from Debug.Graphv.ParserNetworkxGraph import ParserPCCGraph
-from Debug.Monitor.ClassDebug import Debug
 
 
 class UUTMachine:
@@ -132,11 +130,6 @@ class UUT:
             out_msg_list += self.cur_transition.out_msg
 
         return new_uut, out_msg_list
-
-    def process_operations(self, transition):
-        # Only if local variables are set it makes sense to track the destinations of messages and to copy them to
-        # modify their destination dynamically
-        msg_copies = []
 
     def copy_uut(self) -> 'UUT':
         new_uut = copy.copy(self)
@@ -236,11 +229,6 @@ class SystemState:
                 else:
                     new_system_state.pending_events_and_messages.append(out_msg)
 
-    def trace_sanity_check(self):
-        if not self.pending_events_and_messages and not self.execution_tick < self.max_execution_tick:
-            return True
-        return False
-
 
 class TraceCheckerGraphNode:
 
@@ -315,12 +303,6 @@ class TraceCheckGraph:
             # Get the next nodes that are not terminal yet
             next_nodes = [node for node in self.get_exec_graph_terminal_nodes() if node not in terminal_nodes]
 
-    def debug_trace_graph(self):
-        ParserPCCGraph.debug_process_graph(self.exec_graph, "Dummy", True)
-
-    def get_exec_graph_root_nodes(self) -> List[TraceCheckerGraphNode]:
-        return self.exec_graph.successors(self.initial_node)
-
     def get_exec_graph_terminal_nodes(self) -> List[TraceCheckerGraphNode]:
         return list((node for node, out_degree in self.exec_graph.out_degree(self.exec_graph.nodes) if out_degree == 0))
 
@@ -337,7 +319,6 @@ class TraceCheckGraph:
         for node_path in node_paths:
             trans_traces.append([node.uut.cur_transition for node in node_path])
 
-        #valid_traces = self.check_trace_completeness(trans_traces)
         #return valid_traces
         return self.check_trace_completeness(trans_traces)
 
@@ -348,17 +329,3 @@ class TraceCheckGraph:
             if ref_counter == Counter(trans_trace):
                 return trans_traces
         return None
-
-    def get_complete_traces(self, trans_traces: List[List[Transition_v2]]) -> List[List[Transition_v2]]:
-        ref_counter = Counter(self.machine_transitions_list)
-        valid_trans_traces = []
-        for trans_trace in trans_traces:
-            if ref_counter == Counter(trans_trace):
-                valid_trans_traces.append(trans_trace)
-            else:
-                Debug.pwarning("Incomplete trace detected at trace checker: ")
-                Debug.pwarning("Expected transition coverage: " + str(self.machine_transitions_list))
-                Debug.pwarning("Actual transition covereage:  " + str(trans_trace))
-                Debug.pwarning("Trace omitted")
-
-        return valid_trans_traces

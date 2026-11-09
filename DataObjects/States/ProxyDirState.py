@@ -26,7 +26,6 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from typing import Tuple
 from DataObjects.States.ClassStatev2 import State_v2
 
 
@@ -39,5 +38,3 @@ class ProxyDirState(State_v2):
         if proxy_state.stable and dir_state.stable:
             self.stable = True
 
-    def get_compound_states(self) -> Tuple[State_v2]:
-        return tuple([self.proxy_state, self.dir_state])

@@ -93,18 +93,6 @@ class CommClassState(Debug):
     def getevict(self) -> List[Transition_v2]:
         return self.evict_hit + self.evict_miss
 
-    def getevictmiss(self) -> List[Transition_v2]:
-        return self.evict_miss
-
-    def getremote(self) -> List[Transition_v2]:
-        return self.remote_hit + self.remote_miss
-
-    def getremotemiss(self) -> List[Transition_v2]:
-        return self.remote_miss
-
-    def getdataack(self) -> List[Transition_v2]:
-        return self.resp_ack
-
 
 class BaseCommClass:
 

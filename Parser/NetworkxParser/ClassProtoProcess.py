@@ -188,5 +188,3 @@ class ProtoProcess(ProcessStateTransFlowTree):
         self.pwarning("Not all constructed messages were sent", len(var_base_msg_map.keys()) != 0)
 
         return out_msg_list, out_event
-
-

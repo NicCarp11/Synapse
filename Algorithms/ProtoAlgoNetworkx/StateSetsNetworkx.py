@@ -28,9 +28,7 @@
 
 from typing import List, Dict
 
-from networkx import MultiDiGraph
 
-from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from DataObjects.States.ClassStatev2 import State_v2
 from DataObjects.ClassStateSet import StateSet
 from DataObjects.ClassTrace import Trace
@@ -58,15 +56,6 @@ class StateSetsNetworkx:
             # State set assignment of the states
             self.end_set_search(trans_trace_dict[stable_state])
             self.start_set_search(trans_trace_dict[stable_state])
-
-    def cache_dir_assignment(self):
-        pass
-
-    def cache_snoop_assignment(self):
-        pass
-
-    def dir_assignment(self):
-        pass
 
     # All states in a trace are element of the final state set
     def end_set_search(self, trans_traces: List[Trace]):
@@ -101,18 +90,4 @@ class StateSetsNetworkx:
             # Assuming after the first response message, serialization has happened.
             # This will be improved in the near future by utilizing the model checker
             start_set.add_start_state(trace.trace_trans[0].final_state)
-
-    def get_states_from_state_sets(self) -> List[State_v2]:
-        states = []
-        for state_set in self.state_sets.values():
-            for state in state_set.states:
-                states.append(state)
-
-        states = list(set(states))
-        states.sort(key=lambda state: str(state))
-        return states
-
-    @ staticmethod
-    def graph_extract_transitions(fsm_graph: MultiDiGraph) -> List[Transition_v2]:
-        return [edge[2]['transition'] for edge in fsm_graph.edges.data()]
 

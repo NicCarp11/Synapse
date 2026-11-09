@@ -160,12 +160,6 @@ class BaseMessage:
     def register_message_object(self, msg_object: 'Message'):
         self.msg_obj_list.append(msg_object)
 
-    def remove_message_object(self, msg_object: 'Message') -> bool:
-        if msg_object in self.msg_obj_list:
-            self.msg_obj_list.remove(msg_object)
-            return True
-        return False
-
     def p_message(self):
         return str(self.id) + ', ' + str(self.msg_type) + ', ' + str(self.vc)
 
@@ -290,11 +284,3 @@ class BaseNetwork(NetworkType):
                 self.base_message_dict[base_message] += other.base_message_dict[base_message]
             else:
                 self.base_message_dict[base_message] = other.base_message_dict[base_message]
-
-    # Print all the messages
-    def p_messages(self):
-        pass
-        #self.p_header("\nMessages")
-        #for entry in self.msgTypes:
-        #    self.pdebug(entry)
-        #self.pdebug('\n')

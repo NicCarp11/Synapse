@@ -65,7 +65,6 @@ class GenProxyCacheStateTuples(Debug):
             if not ll_dir_trace:
                 continue
 
-            #self.perror("No directory trace found for cache trace: " + str(ll_access_trace), ll_dir_trace)
 
             access_system_tuples[ll_access_trace.init_guard] = state_tuple
 
@@ -99,7 +98,6 @@ class GenProxyCacheStateTuples(Debug):
                             or not isinstance(ll_evict_trace.init_guard, BaseAccess.Evict)):
                         continue
 
-                    #self.perror("No directory trace found for cache trace: " + str(ll_evict_trace), ll_dir_trace)
 
                     if (ll_access_trace.final_state not in evict_system_tuples or
                             state_tuple not in evict_system_tuples[ll_access_trace.final_state]):

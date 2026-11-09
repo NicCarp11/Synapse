@@ -70,18 +70,10 @@ class BaseTransition:
         # A transition can cause a single internal event
         self.out_event: Event = out_event
 
-        #if hasattr(start_state, 'add_transition'):
-        #    start_state.add_transition(self)
 
     def __str__(self):
         return str(self.start_state) + " -- " + str(self.guard) + " -> " + str(self.final_state)
 
-    def print_in_out_msg(self):
-        guard_str = str(self.guard)
-        out_msg_str = ','.join([str(out_msg) for out_msg in self.out_msg])
-        out_evt_str = str(self.out_event) if self.out_event else ""
-        return f"?{guard_str}::!{out_msg_str}{';' if out_msg_str and out_evt_str else ''}{out_evt_str}"
-    
     ## Hash functions
     def __hash__(self):
         return hash((str(self.start_state), str(self.final_state), str(self.guard),
@@ -165,9 +157,6 @@ class BaseTransition:
     ####################################################################################################################
     # Debug Functions
     ####################################################################################################################
-    def dbg_operations(self):
-        return str(objListToStringList(self.operations))
-
     # Extract list of condition operations as string
     def dbg_cond_operation(self) -> List[str]:
         cond_list: List[str] = []

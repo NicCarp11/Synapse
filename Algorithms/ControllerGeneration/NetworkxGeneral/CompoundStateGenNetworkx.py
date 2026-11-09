@@ -48,9 +48,6 @@ class CompoundStateGenNetworkx(TreeBaseNetworkx):
         # Track all states and their respective updates
         self.chain_state_dict: Dict[Tuple[State_v2, ...], CompoundState] = {}
 
-    def clear_chain_state_dict(self):
-        self.chain_state_dict: Dict[Tuple[State_v2, ...], CompoundState] = {}
-
     def gen_compound_states_graph(self, graph: MultiDiGraph,
                                   chain_states: Union[List[State_v2], Tuple[State_v2]]) -> MultiDiGraph:
         updated_graph = MultiDiGraph()

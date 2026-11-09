@@ -27,14 +27,13 @@
 #
 
 import collections
-from typing import List, Union, Tuple, Set, Dict
+from typing import List, Union, Tuple, Set
 
 import networkx as nx
 from networkx import MultiDiGraph
 
 from DataObjects.States.ClassStatev2 import State_v2
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
-from DataObjects.ClassMultiDict import MultiDict
 from Debug.Graphv.ProtoCCGraph import ProtoCCGraph
 
 
@@ -91,27 +90,6 @@ class TreeBaseNetworkx:
         self.add_transition_to_graph(fsm_graph, transitions)
         return fsm_graph
 
-    def prune_states_from_graph(self, fsm_graph_dict: Dict[State_v2, List[MultiDiGraph]], stable_states: List[State_v2],
-                                prune_states: Set[State_v2]) -> MultiDict:
-        pruned_fsm_graph_dict: MultiDict = MultiDict()
-        for stable_state in stable_states:
-            for fsm_graph in fsm_graph_dict[stable_state]:
-                pruned: bool = False
-                for prune_state in prune_states:
-                    if prune_state in fsm_graph.nodes:
-                        fsm_graph.remove_node(prune_state)
-                        pruned = True
-                if pruned:
-                    traces = self.get_trans_traces(fsm_graph, stable_state, stable_states, len(fsm_graph)*2)
-                    transitions = [trans for trans_list in traces for trans in trans_list]
-                    if transitions:
-                        pruned_fsm_graph_dict[stable_state] = self.sub_tree(stable_state, stable_states, transitions)
-                        continue
-
-                pruned_fsm_graph_dict[stable_state] = fsm_graph
-
-        return pruned_fsm_graph_dict
-
     def prune_non_reachable_states_graph(self, fsm_graph: MultiDiGraph):
         root_nodes = self.get_root_node_ignore_loop(fsm_graph, False)
         while root_nodes:
@@ -163,14 +141,7 @@ class TreeBaseNetworkx:
                          start_state: State_v2,
                          terminal_states: List[State_v2],
                          cutoff: Union[int, None] = None) -> List[List[Union[Transition_v2, None]]]:
-        #self.dbg_tree_graph(trace_tree)
         return list(self._all_simple_paths_edges_multigraph(trace_tree, start_state, terminal_states, cutoff))
-
-    def get_trans_traces_no_loop(self,
-                                 trace_tree: MultiDiGraph,
-                                 start_state: State_v2,
-                                 terminal_states: List[State_v2]) -> List[List[Union[Transition_v2, None]]]:
-        return list(nx.all_simple_paths(trace_tree, start_state, terminal_states))
 
     ## Extract all ssp_transitions originating in start_state
     #  @param self, trace_tree: MultiDiGraph, start_state: State_v2, -> List[Transition_v2]:
@@ -183,11 +154,6 @@ class TreeBaseNetworkx:
     def get_transitions_by_final_state(cls, trace_tree: MultiDiGraph, final_state: State_v2) -> List[Transition_v2]:
         transitions = cls.get_transitions_from_graph(trace_tree)
         return [transition for transition in transitions if transition.final_state == final_state]
-
-    @classmethod
-    def get_transitions_by_start_and_final_state(cls, trace_tree: MultiDiGraph, start_state: State_v2, final_state: State_v2) -> List[Transition_v2]:
-        transitions = cls.get_transitions_from_graph(trace_tree)
-        return [transition for transition in transitions if transition.start_state == start_state and transition.final_state == final_state]
 
     ## Assign the root node attribute self.root to a specific node in the tree
     # @param self, trace_tree: MultiDiGraph, root_node: Union[State_v2, Tuple[State_v2, State_v2]]
@@ -249,14 +215,6 @@ class TreeBaseNetworkx:
 
     ## Clears the passed attribute associated with the passed attribute string from the specific passed node
     # @param self, trace_tree: MultiDiGraph, attribute: str
-    @staticmethod
-    def clear_node_attribute(trace_tree: MultiDiGraph, node: State_v2, attribute: str):
-        root_nodes = dict(trace_tree.nodes())
-        if node in root_nodes:
-            root_node_items = root_nodes[node]
-            if attribute in root_node_items:
-                del root_nodes[node][attribute]
-
     ## Extract the ssp_transitions (assigned as attributes to the edges) from the graph
     # @param self, fsm_graph: MultiDiGraph, -> List[Transition_v2]
     @classmethod
@@ -265,43 +223,6 @@ class TreeBaseNetworkx:
 
     ## Extract the ssp_transitions (assigned as attributes to the edges) from the graph
     # @param self, fsm_graph: MultiDiGraph, -> List[Transition_v2]
-    @classmethod
-    def get_dfs_transitions_from_graph(cls, fsm_graph: MultiDiGraph) -> List[Transition_v2]:
-
-        root_node = TreeBaseNetworkx.get_root_node_by_attribute(fsm_graph)
-        if root_node is None:
-            return []
-
-        visited = set()  # Set to keep track of visited nodes globally.
-        path = []  # List to keep the current traversal path
-
-        # Lambda function
-        def dfs_visit(node):
-            visited.add(node)  # Mark the node as visited
-            path.append(node)  # Add the node to the current path
-
-            for child in fsm_graph[node]:
-                if child not in visited:
-                    # If the child has not been visited, yield the edge and continue DFS
-                    for edge in TreeBaseNetworkx.get_transitions_by_start_and_final_state(fsm_graph, node, child):
-                        yield (node, edge, child)
-                    yield from dfs_visit(child)
-                elif child in path:
-                    # If the child is visited and is in the current path, we've found a cycle
-                    for edge in TreeBaseNetworkx.get_transitions_by_start_and_final_state(fsm_graph, node, child):
-                        yield (node, edge, child)
-                    continue
-                else:
-                    # Child is visited but not in the current path, yield the edge
-                    # This means we're crossing paths but not forming a cycle in the context of this traversal
-                    for edge in TreeBaseNetworkx.get_transitions_by_start_and_final_state(fsm_graph, node, child):
-                        yield (node, edge, child)
-
-            path.remove(node)  # Remove the node from the current path when backtracking
-
-        # Start DFS from the source node and yield from its visit generator
-        yield from dfs_visit(root_node)
-
     ## Returns the transition associated with the edge
     @staticmethod
     def get_transition_from_edge(edge):
@@ -309,93 +230,12 @@ class TreeBaseNetworkx:
 
     ## Remove
     # @param self, fsm_graph: MultiDiGraph, -> List[Transition_v2]
-    @staticmethod
-    def remove_transitions_from_graph(fsm_graph: MultiDiGraph, transitions: Union[Transition_v2, List[Transition_v2]]):
-        if not isinstance(transitions, List):
-            transitions = [transitions]
-        for transition in transitions:
-            fsm_graph.remove_edge(transition.start_state, transition.final_state, transition=transition)
-
     ## Debug function that extracts the ssp_transitions from the graph and calls the ProtoCCGraph class to print out a
     # @param self, fsm_graph: MultiDiGraph
     def dbg_tree_graph(self, fsm_graph: MultiDiGraph):
         trans = self.get_transitions_from_graph(fsm_graph)   # Extract the ssp_transitions from the graph
         if trans:
             ProtoCCGraph(str(trans[0]), trans)
-
-    @staticmethod
-    def print_tree_graph(fsm_graph: MultiDiGraph):
-        ss_fs_trans_tuple_list = list(TreeBaseNetworkx.get_dfs_transitions_from_graph(fsm_graph))
-        str_ss_fs_trans_tuple_list, spacing_len = TreeBaseNetworkx._normalize_print_str(ss_fs_trans_tuple_list)
-        padding_str = ' '*(spacing_len + 9)
-
-        # Create a mapping from node to list of child nodes
-        graph_structure = {}
-        for ss, t, fs in str_ss_fs_trans_tuple_list:
-            if ss in graph_structure:
-                graph_structure[ss].append((fs, t))
-            else:
-                graph_structure[ss] = [(fs, t)]
-
-        path = []
-
-        # Function to print the graph structure
-        def print_branch(node, prefix='', is_tail=True):
-            state = node[0]
-            trans = " --" + node[1] + "-> "
-            # Print current node
-            line = f"{prefix}{'|' if node[1] else ''}{trans if node[1] else ''}{state}"
-            print(line)
-            path.append(state)
-
-            # Increase indentation
-            next_prefix = prefix
-            if node[1]:
-                next_prefix += padding_str
-
-            # Recursively print each child
-            if state not in graph_structure:
-                return  # Base case: no children
-            children = graph_structure[state]
-
-            for i, child in enumerate(children):
-                child_state = child[0]
-                # Protect against loops
-                if not child_state in path:
-                    print_branch(child, next_prefix, i == len(children) - 1)
-                else:
-                    line = f"{next_prefix}{'|'} --{child[1]}-> {child[0]}"
-                    print(line)
-
-            path.remove(state) 
-
-        # Start printing from the source node
-        if str_ss_fs_trans_tuple_list:
-            print_branch((str_ss_fs_trans_tuple_list[0][0], ''))
-
-
-    @staticmethod
-    def _normalize_print_str(ss_fs_trans_tuple_list: List[Tuple[State_v2, Transition_v2, State_v2]]) -> List[Tuple[str, str, str]]:
-        str_ss_fs_trans_tuple_list = []
-        max_len_state_str = 0
-        max_len_trans_str = 0
-
-        for tuple in ss_fs_trans_tuple_list:
-            ss_str = str(tuple[0])
-            trans_str = tuple[1].print_in_out_msg()
-            fs_str = str(tuple[2])
-
-            str_ss_fs_trans_tuple_list.append((ss_str, trans_str, fs_str))
-
-            max_len_state_str = max(len(ss_str), max_len_state_str)
-            max_len_state_str = max(len(fs_str), max_len_state_str)
-            max_len_trans_str = max(len(trans_str), max_len_trans_str)
-
-        for ind in range(0, len(str_ss_fs_trans_tuple_list)):
-            str_tuple = str_ss_fs_trans_tuple_list[ind]
-            str_ss_fs_trans_tuple_list[ind] = (str_tuple[0].ljust(max_len_state_str), (' ' + str_tuple[1] + ' ').center(max_len_trans_str,'-'), str_tuple[2].ljust(max_len_state_str))
-
-        return str_ss_fs_trans_tuple_list, max_len_trans_str
 
 
 
@@ -404,7 +244,6 @@ class TreeBaseNetworkx:
     def _all_simple_paths_edges_multigraph(G: MultiDiGraph, source: State_v2, targets: List[State_v2], cutoff=None):
         targets = set(targets)
         if cutoff is None:
-            #cutoff = len(G)-1
             cutoff = len(G)+1
         visited = collections.OrderedDict.fromkeys([])
         stack = [((u, v, c) for u, v, c in G.edges(source, data="transition"))]

@@ -49,15 +49,3 @@ class BaseDeferMessage:
         new_operation.addChild(CommonTree(CommonToken(text=str(guard))))
         return new_operation
 
-    @staticmethod
-    def pop_defer_message(defer_token: str, var_token: str, guard: str) -> CommonTree:
-        new_operation = CommonTree(CommonToken(text=ProtoParserBase.k_assign))
-
-        # Left side assignment
-        new_operation.addChild(CommonTree(CommonToken(text=var_token + str(guard))))
-        # Assignment operator
-        new_operation.addChild(CommonTree(CommonToken(text="=")))
-        # Right side assignment
-        new_operation.addChild(CommonTree(CommonToken(text=str(defer_token + str(guard)))))
-        return new_operation
-

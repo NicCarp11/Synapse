@@ -27,7 +27,7 @@
 #
 
 import os
-from typing import List, Tuple, Any
+from typing import List, Tuple
 from graphviz import Digraph as gDigraph, ExecutableNotFound
 from networkx import DiGraph as nDigraph
 
@@ -41,8 +41,6 @@ class ParserPCCGraph:
     TextFontSize = '15'
 
     def __init__(self, header: str, edges: List[Tuple[str]], option=0, show_pdf = True):
-        # Compass points currently not used, as not more than 4 loops were observed
-        # CompassPoints=["n","ne","e","se","s","sw","w","nw","c","_"]
 
         # Create FSM graphs
         self.graph = gDigraph(header, filename=(header + '.gv'), engine='dot')

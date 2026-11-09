@@ -52,9 +52,5 @@ class Constants:
 
         return key_list
 
-    def update_const_value(self, const_name: str, new_value: str):
-        assert isinstance(new_value, str) and new_value.isdigit(), "New constant assignment is not integer"
-        self.const_dict[const_name] = new_value
-
     def merge_constants(self, other: 'Constants'):
         self.const_dict.update(other.const_dict)

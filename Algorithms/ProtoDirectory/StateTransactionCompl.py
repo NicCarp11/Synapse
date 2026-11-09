@@ -34,7 +34,7 @@ from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.FlowDataTypes.ClassBaseAccess import BaseAccess
 from DataObjects.ClassSystemTuple import SystemTuple
 from DataObjects.ClassMultiDict import MultiDict
-from DataObjects.FlowDataTypes.ClassMessage import Message, BaseMessage
+from DataObjects.FlowDataTypes.ClassMessage import BaseMessage
 from DataObjects.ClassTrace import Trace
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from DataObjects.States.ClassStatev2 import State_v2
@@ -43,21 +43,6 @@ from networkx import MultiDiGraph
 from Algorithms.ControllerGeneration.NetworkxGeneral.TreeCopyNetworkx import TreeCopyNetworkx
 
 from Debug.Monitor.ClassDebug import Debug
-
-
-class MsgTraceMap:
-    def __init__(self, msg: Message, access_trace: Trace, dir_trace: Trace):
-        self.msg: Message = msg
-        self.access_trace = access_trace
-        self.dir_trace = dir_trace
-
-    def __str__(self):
-        return str(self.msg)
-
-    def __hash__(self):
-        in_tuple = (hash(in_msg) for in_msg in self.dir_trace.guards_msg)
-        out_tuple = (hash(out_msg) for out_msg in self.dir_trace.out_msg)
-        return hash((hash(self.msg), in_tuple, out_tuple))
 
 
 class StateTransactionCompl(TreeCopyNetworkx, Debug):
@@ -114,7 +99,7 @@ class StateTransactionCompl(TreeCopyNetworkx, Debug):
 
             dir_traces = state_tuple.get_arch_traces(self.directory)
             # If multiple concurrent accesses happen skip the allowed state tuple
-            self.perror("If only a single access happens multiple directory traces ""are illegal internal model" 
+            self.perror("If only a single access happens multiple directory traces ""are illegal internal model"
                         "checker error", len(dir_traces) < 2)
 
             if not access_traces:
@@ -149,7 +134,7 @@ class StateTransactionCompl(TreeCopyNetworkx, Debug):
                 continue
 
             # If multiple concurrent accesses happen skip the allowed state tuple
-            self.perror("If only a single access happens multiple directory traces ""are illegal internal model" 
+            self.perror("If only a single access happens multiple directory traces ""are illegal internal model"
                         "checker error", len(dir_traces) < 2)
 
             # Ignore loops
@@ -170,16 +155,6 @@ class StateTransactionCompl(TreeCopyNetworkx, Debug):
         return state_connectivity_map
 
     # Checks if the messages are unique to the accesses
-    def check_access_message_mapping(self, guard_request_map: MultiDict):
-        for cur_guard_message_list in guard_request_map.values():
-            for ref_guard_message_list in guard_request_map.values():
-                if cur_guard_message_list == ref_guard_message_list:
-                    continue
-                if set(cur_guard_message_list).intersection(set(ref_guard_message_list)):
-                    self.perror("Different accesses use the same message names, unable to resolve accesses "
-                                "in case of concurrency: " + str(set(cur_guard_message_list)) +
-                                " | " + str(set(ref_guard_message_list)))
-
     def auto_complete_directory_transactions(self) -> List[Transition_v2]:
         new_trans = []
         for missing_access in self.access_state_map_miss:
@@ -289,7 +264,7 @@ class StateTransactionCompl(TreeCopyNetworkx, Debug):
 
             dir_traces = state_tuple.get_arch_traces(self.directory)
             # If multiple concurrent accesses happen skip the allowed state tuple
-            self.perror("If only a single access happens multiple directory traces ""are illegal internal model" 
+            self.perror("If only a single access happens multiple directory traces ""are illegal internal model"
                         "checker error", len(dir_traces) < 2)
 
             if (not dir_traces or
@@ -441,6 +416,3 @@ class StateTransactionCompl(TreeCopyNetworkx, Debug):
             end_state_set.add_end_state(new_state)
 
         return new_state
-
-    def prune_operations(self):
-        pass

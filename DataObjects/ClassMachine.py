@@ -79,24 +79,6 @@ class Machine:
             new_machine_state.final_state = self.final_state
         return new_machine_state
 
-    def add_idle(self) -> 'Machine':
-        new_machine_state = copy.copy(self)
-        new_machine_state.cur_trace = None
-        new_machine_state.start_state = new_machine_state.final_state
-        # Add trace to the covered traces
-        return new_machine_state
-
-    def get_mach_state_trace_id(self) -> int:
-        if self.cur_trace:
-            return id(self.cur_trace)
-        else:
-            ret_val = 0
-            if self.start_state:
-                ret_val += id(self.start_state)
-            if self.final_state:
-                ret_val += id(self.final_state)
-            return ret_val
-
     def get_mach_state_trace_str(self) -> str:
         if self.cur_trace:
             return str(self.cur_trace)

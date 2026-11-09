@@ -26,7 +26,7 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from typing import List, Tuple, Union
+from typing import List, Union
 
 from DataObjects.FlowDataTypes.ClassBaseAccess import Access, Evict
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
@@ -65,9 +65,6 @@ class State_v2(CommClassState, Debug):
     # Don't define __hash__ and __eq__ function as state objects won't be found in networkx dict anymore if changed
     # externally. Hence use custom hashing
 
-    def custom_hash(self):
-        return hash((str(self.state), (hash(trans) for trans in self.state_trans)))
-
     ####################################################################################################################
     # STATE TRANSITION
     ####################################################################################################################
@@ -97,5 +94,3 @@ class State_v2(CommClassState, Debug):
     ####################################################################################################################
     # Compound controller function
     ####################################################################################################################
-    def get_compound_states(self) -> Tuple['State_v2']:
-        return tuple([self])

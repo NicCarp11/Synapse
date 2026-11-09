@@ -52,9 +52,6 @@ class StateSet:
 # STABLE STATE
 ########################################################################################################################
 
-    def getstablestate(self) -> State_v2:
-        return self.stable_state
-
     def add_start_state(self, state: State_v2):
         # Stable states aren't added to state sets
         if state.stable:
@@ -78,16 +75,3 @@ class StateSet:
             self.end_states.append(state)
             if self not in state.end_state_set:
                 state.end_state_set.append(self)
-
-    def remove_state(self, state):
-        state.remove_state_set(self)
-        if state in self.states:
-            self.states.remove(state)
-        if state in self.start_states:
-            self.start_states.remove(state)
-        if state in self.end_states:
-            self.end_states.remove(state)
-
-    def removestates(self, states):
-        for state in states:
-            self.remove_state(state)

@@ -117,7 +117,6 @@ class ProxyDirStateMachine(TreeBaseNetworkx, GenProxyCacheStateTuples):
                 evict_proxy_dir_trans_list = []
                 for evict_trace in evict_traces_dict[cache_start_state][dir_start_state]:
                     for trans_tuple, system_tuple in evict_trace.items():
-                    #for trans_tuple, system_tuple in evict_traces_dict[cache_start_state][dir_start_state].items():
                         evict_proxy_dir_trans_list.append(self.cluster_proxy_dir_transitions(trans_tuple, system_tuple))
                 return_evict_proxy_dir_trans_dict[cache_start_state][dir_start_state] = evict_proxy_dir_trans_list
         return return_evict_proxy_dir_trans_dict
