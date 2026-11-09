@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -50,7 +51,14 @@ class TemplateHandler:
     # REPLACE DYNAMIC
     ####################################################################################################################
     def open_template(self, filename):
-        return re.sub(r'^#.*\n?', '', open(self.template_path + "/" + filename, "r").read(), flags=re.MULTILINE)
+        # For gem5 v20 a template of TempSLICC/<dir>_v20 replaces the one of TempSLICC/<dir>
+        from Backend.SLICC.ModularSLICC.BackendOptions import OPTIONS, GEM5_V23
+        path = self.template_path + "/" + filename
+        if OPTIONS.gem5 != GEM5_V23:
+            variant = os.path.normpath(self.template_path) + "_" + OPTIONS.gem5 + "/" + filename
+            if os.path.exists(variant):
+                path = variant
+        return re.sub(r'^#.*\n?', '', open(path, "r").read(), flags=re.MULTILINE)
 
     @staticmethod
     def string_repl_keys(ref_string, replace_keys):
@@ -80,16 +88,3 @@ class TemplateHandler:
 
         return self.nl.join(result)
 
-    @staticmethod
-    def test_int(string):
-        try:
-            int(string)
-            return True
-        except ValueError:
-            return False
-
-    @staticmethod
-    def test_operator(string):
-        if string.isalpha():
-            return True
-        return False
