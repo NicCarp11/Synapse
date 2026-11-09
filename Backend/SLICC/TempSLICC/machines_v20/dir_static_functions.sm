@@ -1,0 +1,70 @@
+Tick clockEdge();
+Tick cyclesToTicks(Cycles c);
+Cycles ticksToCycles(Tick t);
+void set_tbe(TBE a);
+void unset_tbe();
+void wakeUpAllBuffers(Addr a);
+
+Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
+  Entry entry := static_cast(Entry, "pointer", $1$[LineAddress]);
+  if (is_invalid(entry)) {
+    entry := static_cast(Entry, "pointer", $1$.allocate(LineAddress, new Entry));
+  }
+  return entry;
+}
+
+State getState(TBE tbe, Addr LineAddress) {
+  if (is_valid(tbe)) {
+    return tbe.TBEState;
+  } else if ($1$.isPresent(LineAddress)) {
+    return getEntry(LineAddress).$0$State;
+  } else {
+    return State:$2$;
+  }
+}
+
+void setState(TBE tbe, Addr LineAddress, State state) {
+  DPRINTF(RubySlicc, "%s -> %s (addr: %#x)\n", getState(tbe, LineAddress), state, LineAddress);
+  //if (state != getState(tbe, LineAddress)) {
+  //  wakeUpAllBuffers(LineAddress);
+  //}
+  if (is_valid(tbe)) {
+    tbe.TBEState := state;
+  }
+  if ($1$.isPresent(LineAddress)) {
+    getEntry(LineAddress).$0$State := state;
+  }
+}
+
+AccessPermission getAccessPermission(Addr LineAddress) {
+  TBE tbe := TBEs[LineAddress];
+  if (is_valid(tbe)) {
+    return $0$_State_to_permission(tbe.TBEState);
+  } else if ($1$.isPresent(LineAddress)) {
+    return $0$_State_to_permission(getEntry(LineAddress).$0$State);
+  } else {
+    return AccessPermission:NotPresent;
+  }
+}
+
+void setAccessPermission(Addr LineAddress, State state) {
+  if ($1$.isPresent(LineAddress)) {
+    getEntry(LineAddress).changePermission($0$_State_to_permission(state));
+  }
+}
+
+MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+
+bool functionalRead(Addr LineAddress, Packet *pkt) {
+  // Ruby asks every controller when none holds a readable copy (e.g. the block is Maybe_Stale
+  // here): only the directory of the block reads its memory
+  if (mapAddressToMachine(LineAddress, MachineType:Directory) != machineID) {
+    return false;
+  }
+  functionalMemoryRead(pkt);
+  return true;
+}
+
+int functionalWrite(Addr LineAddress, Packet *pkt) {
+  return 0 + functionalMemoryWrite(pkt);
+}

@@ -1,0 +1,17 @@
+machine(MachineType:$0$, "Cache controller")
+: DOSequencer *sequencer;
+  CacheMemory *cache;
+  CacheMemory *cache_instruction;
+  bool send_evictions;
+  int $1$_id;
+
+  Cycles responseLatency := 1;
+  Cycles recycleLatency := 10;
+
+  // Required networks
+  MessageBuffer *mandatoryQueue;
+
+  // Dynamic networks
+  $2$
+
+{

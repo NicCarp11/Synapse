@@ -1,0 +1,15 @@
+machine(MachineType:$0$, "Directory protocol")
+:
+
+  DirectoryMemory *directory;
+  Cycles toMemLatency := 1;
+  Cycles responseLatency := 6;
+  Cycles recycleLatency := 10;
+
+  // Required networks
+  MessageBuffer *responseFromMemory;
+
+  // Dynamic networks
+  $1$
+
+{
