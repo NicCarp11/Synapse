@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -30,34 +31,36 @@
 #
 
 import os
-from time import sleep
 
-from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
-from Algorithms.HeteroGen.ClassHHDirArchitecture_L2private import HHDirArchitecture_L2private
-from Backend.SLICC.ModularSLICC.ModularProxy import ModularProxy
 from DataObjects.ClassCluster import Cluster
 from Debug.Monitor.MakeDir import make_dir
 from Backend.SLICC.ModularSLICC.ModularMsg import ModularMsg
 from Backend.SLICC.ModularSLICC.ModularDir import ModularDir
 from Backend.SLICC.ModularSLICC.ModularCache import ModularCache
 
-from Debug.Monitor.ClassDebug import Debug
+import glob
+from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
+from Backend.SLICC.ModularSLICC.ModularProxy import ModularProxy
+from Parser.DataTypes.ClassProtoMachine import ProtoMachine
+from Backend.SLICC.ModularSLICC.BackendOptions import GEM5_V20, OPTIONS, BackendOptions
+from Backend.SLICC.ModularSLICC.common import Gem5V20
 
-sleep(0.05)
 
-
-def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
+def RunSLICCModular(cluster: Cluster, file_name: str, options: BackendOptions = None) -> None:
     path = os.getcwd()
+    # topology-dependent choices of the back end (BackendOptions); defaults otherwise
+    for name, value in vars(options or BackendOptions()).items():
+        setattr(OPTIONS, name, value)
 
     make_dir("SLICC")
 
-    ModularMsg(cluster, file_name)
+    (arch,) = cluster.get_global_architectures()
 
-    file_name = "SLICC_TEST"
+    ModularMsg(arch, file_name)
 
     directories = cluster.get_machine_architectures_by_type(ProtoMachine.k_dir)
-    proxies = [cache for cache in directories if (isinstance(cache, HHDirArchitecture) or isinstance(cache, HHDirArchitecture_L2private))]
-    directory, = [dir for dir in directories if not isinstance(dir, HHDirArchitecture) and not isinstance(dir, HHDirArchitecture_L2private)]
+    proxies = [cache for cache in directories if isinstance(cache, HHDirArchitecture)]
+    directory, = [dir for dir in directories if not isinstance(dir, HHDirArchitecture)]
     caches = cluster.get_machine_architectures_by_type(ProtoMachine.k_cache)
 
     machine_ids = {}
@@ -73,11 +76,8 @@ def RunSLICCModular(cluster: Cluster, file_name: str) -> None:
     for idx, proxy in enumerate(sorted(proxies, key=str)):
         ModularProxy(cluster, proxy, file_name, machine_ids, (idx + 1) if len(proxies) > 1 else None)
 
-
-
-    for arch in cluster.get_machine_architectures():
-        if arch.machine.check_cache():
-            ModularCache(cluster, arch, file_name)
+    if OPTIONS.gem5 == GEM5_V20:
+        Gem5V20.rewrite_files(glob.glob(file_name.split(".")[0] + "_*.sm"))
 
     print("SLICC files were generated in: " + os.getcwd())
 
