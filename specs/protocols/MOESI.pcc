@@ -36,7 +36,6 @@ Message RespDataAck{
 };
 
 Architecture cache {
-
     Stable{I, S, O, E, M}
 
     // I ////////////////////////////////////////////////////////
@@ -71,7 +70,6 @@ Architecture cache {
                 break;
         }
     }
-
 
     Process(I, store, State){
         msg = Request(GetM, ID, directory.ID);
@@ -316,7 +314,6 @@ Architecture cache {
         resp.send(msg);
     }
 
-
     Process(E, Fwd_GetS, O){
         msg = RespData(GetS_Ack, ID, Fwd_GetS.src, cl);
         resp.send(msg);
@@ -336,11 +333,9 @@ Architecture cache {
         }
     }
 
-
 }
 
 Architecture directory {
-
     Stable{I, S, O, E, M}
 
     // I ////////////////////////////////////////////////////////
@@ -361,10 +356,6 @@ Architecture directory {
         resp.send(msg);
         owner = GetM.src;
     }
-
-    // Cache should never send PutI
-    //Process(I, PutI){
-    //}
 
     Process(I, PutS){
        msg = Ack(PutI_Ack, ID, PutS.src);
@@ -436,10 +427,6 @@ Architecture directory {
        cache.clear();
     }
 
-    // Cache should never send PutI
-    //Process(I, PutI){
-    //}
-
     Process(S, PutS, State){
        if cache.contains(PutS.src){
            msg = Ack(PutS_Ack, ID, PutS.src);
@@ -484,7 +471,6 @@ Architecture directory {
            resp.send(msg);
        }
     }
-
 
     // M ////////////////////////////////////////////////////////
     Process(M, GetS, State){
@@ -646,10 +632,6 @@ Architecture directory {
            resp.send(msg);
            cache.del(PutS.src);
 
-           //if cache.count() == 0{
-           //  State=I;
-           //  break;
-           //}
        } else {
            msg = Ack(PutI_Ack, ID, PutS.src);
            resp.send(msg);

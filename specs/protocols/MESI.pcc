@@ -33,7 +33,6 @@ Message RespAck{
 };
 
 Architecture cache {
-
     Stable{I, S, E, M}
 
     // I ////////////////////////////////////////////////////////
@@ -67,7 +66,6 @@ Architecture cache {
                 break;
         }
     }
-
 
     Process(I, store, State){
         msg = Request(GetM, ID, directory.ID);
@@ -118,11 +116,6 @@ Architecture cache {
                 break;
         }
     }
-
-    // There should never be outstanding Put_Ack in I state
-    //Process(I, PutI_Ack, State){
-    //   State = I;
-    //}
 
     // S ////////////////////////////////////////////////////////
     Process(S, load){
@@ -180,11 +173,9 @@ Architecture cache {
     }
 
     Process(S, Inv, I){
-        //msg = Resp(Inv_Ack, ID, Inv.src, cl);
         msg = Ack(Inv_Ack, ID, Inv.src);
         resp.send(msg);
     }
-
 
     // M ////////////////////////////////////////////////////////
     Process(M, load){
@@ -259,7 +250,6 @@ Architecture cache {
 }
 
 Architecture directory {
-
     Stable{I, S, E, M}
 
     // I ////////////////////////////////////////////////////////
@@ -280,10 +270,6 @@ Architecture directory {
         resp.send(msg);
         owner = GetM.src;
     }
-
-    // Cache should never send PutI
-    //Process(I, PutI){
-    //}
 
     Process(I, PutS){
        msg = Ack(PutI_Ack, ID, PutS.src);
@@ -307,7 +293,6 @@ Architecture directory {
        }
     }
 
-
     // S ////////////////////////////////////////////////////////
     Process(S, GetS){
        msg = Resp(GetS_Ack, ID, GetS.src, cl);
@@ -320,23 +305,6 @@ Architecture directory {
        resp.send(msg);
        cache.add(GetSIfetch.src);
     }
-
-//    Process(S, GetM){
-//       if cache.contains(GetM.src){
-//           cache.del(GetM.src);
-//           msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
-//           resp.send(msg);
-//           State=M;
-//       } else {
-//           msg = RespAck(GetM_Ack_AD, ID, GetM.src, cl, cache.count());
-//           resp.send(msg);
-//           State=M;
-//       }
-//       msg = Ack(Inv, GetM.src, GetM.src);
-//       fwd.mcast(msg, cache);
-//       owner = GetM.src;
-//       cache.clear();
-//    }
 
     Process(S, GetM){
        if cache.contains(GetM.src){
@@ -355,10 +323,6 @@ Architecture directory {
        cache.clear();
        State=M;
     }
-
-    // Cache should never send PutI
-    //Process(I, PutI){
-    //}
 
     Process(S, PutS){
        if cache.contains(PutS.src){
