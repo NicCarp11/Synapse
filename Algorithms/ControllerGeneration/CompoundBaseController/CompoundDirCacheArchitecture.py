@@ -30,6 +30,7 @@ from typing import List, Dict, Tuple
 
 from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 from DataObjects.ClassLevel import Level
+from DataObjects.States.ClassStatev2 import State_v2
 
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from Algorithms.ControllerGeneration.AccessMessageMap.GenAccessMessageMap import GenAccessMessageMap
@@ -67,6 +68,26 @@ class CompoundDirCacheArchitecture(FlatArchitecture, GenAccessMessageMap):
         new_transitions = []
         if isinstance(arch_level.directory, ProxyDirArchitecture):
             new_transitions = self.gen_new_directory_req_transitions()
+            # if arch_level.parser.filename.startswith("MOESI"):
+            #     store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
+            #     for state in self.dir_state_req_base_message_access_map:
+            #         if isinstance(state, State_v2) and state.state.startswith("M"):
+            #             for msg in self.dir_state_req_base_message_access_map[state]:
+            #                 if isinstance(msg, BaseMessage) and msg.id.startswith("GetS"):
+            #                     self.dir_state_req_base_message_access_map[state][msg] = store_access
+            #         elif isinstance(state, State_v2) and state.state.startswith("E"):
+            #             for msg in self.dir_state_req_base_message_access_map[state]:
+            #                 if isinstance(msg, BaseMessage) and msg.id.startswith("GetS"):
+            #                     self.dir_state_req_base_message_access_map[state][msg] = store_access
+            #         if isinstance(state, State_v2) and state.state.startswith("O"):
+            #             to_remove = []
+            #             for msg in self.dir_state_req_base_message_access_map[state]:
+            #                 # if isinstance(msg, BaseMessage) and msg.id.startswith("GetS"):
+            #                 #     self.dir_state_req_base_message_access_map[state][msg] = store_access
+            #                 if isinstance(msg, BaseMessage) and msg.id.startswith("Unblock"):
+            #                     to_remove.append(msg)
+            #             for msg in to_remove:
+            #                 self.dir_state_req_base_message_access_map[state].pop(msg)
         else:
             new_transitions = self.gen_new_directory_req_transitions()
             # Cheap trick, but works

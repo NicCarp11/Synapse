@@ -253,7 +253,13 @@ class NetworkxModelChecker(Debug):
         if None in arch_set:
             arch_set.remove(None)
 
-        self.mach_term_cond = 2
+        for arch in arch_set:
+            if arch.global_arch.dependent_level_list[0].parser.filename.startswith("MOESI"):
+                self.mach_term_cond = 3
+            elif arch.global_arch.dependent_level_list[0].parser.filename.startswith("MESIF"):
+                self.mach_term_cond = 3
+            else:
+                self.mach_term_cond = 2
 
         self.valid_system_states: List[SystemStateTupleIdentifier] = []
         self.state_tuple_list: List[SystemTuple] = []

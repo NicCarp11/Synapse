@@ -42,8 +42,8 @@ from Debug.Monitor.ClassDebug import Debug
 
 
 class GenAccessMessageMap(Debug):
-
     auto_detect_access_appearance_at_memory: bool = True
+
     hidden_accesses: bool = True
 
     def __init__(self, level: Level):
@@ -66,7 +66,7 @@ class GenAccessMessageMap(Debug):
             self.det_memory_write_access()
 
         # Step 3) Determine which BaseMessages have to be renamed by having the cache communicating to the dir
-        self.cache_to_dir_state_base_message_map: List[Tuple[Trace, BaseMessage, Trace]] = []       # HeteroGen & HieraGen
+        self.cache_to_dir_state_base_message_map: List[Tuple[Trace, BaseMessage, Trace]] = []  # HeteroGen & HieraGen
         self.det_req_cache_to_directory_messages()
 
         Debug.psection("\nSystem Communication Trace Tuples")
@@ -75,16 +75,19 @@ class GenAccessMessageMap(Debug):
         # Step 4) Generate new base messages and map these to the accesses
         # Use this Dict to track all messages and to which new base messages they need to be assigned to
         # e.g. A GetO must convey whether is originates from a store or a release, hence one GetO must be named GetO_release
-        
+
         # HeteroGen Request Mappings
         self.new_req_to_original_base_message_map: Dict[BaseMessage, BaseMessage] = {}
-        # Maps actual logical access performed to actual access that is hidden due to e.g. writes 
+        # Maps actual logical access performed to actual access that is hidden due to e.g. writes
         # only completing locally or loads acquiring exclusive permission
-        self.cache_state_logical_access_to_hidden_access: Dict[State_v2, Dict[BaseAccess.Access, BaseAccess.Access]] = {}
+        self.cache_state_logical_access_to_hidden_access: Dict[
+            State_v2, Dict[BaseAccess.Access, BaseAccess.Access]] = {}
 
         self.cache_state_new_req_to_access_map: Dict[State_v2, Dict[BaseMessage, BaseAccess.Access]] = {}
-        self.cache_state_to_new_req_base_message_map: Dict[State_v2, Dict[BaseMessage, BaseMessage]] = {}      # e.g. 'GetOL1_1release'
-        self.dir_state_req_to_new_req_msg_map: Dict[State_v2, Dict[BaseMessage, BaseMessage]] ={} 
+        self.cache_state_to_new_req_base_message_map: Dict[
+            State_v2, Dict[BaseMessage, BaseMessage]] = {}  # e.g. 'GetOL1_1release'
+        self.dir_state_message_for_l2_private: Dict[State_v2, Dict[BaseMessage, BaseMessage]] = {}
+        self.dir_state_req_to_new_req_msg_map: Dict[State_v2, Dict[BaseMessage, BaseMessage]] = {}
         self.dir_state_req_base_message_access_map: Dict[State_v2, Dict[BaseMessage, BaseAccess.Access]] = {}
 
         # HieraGen Data Types
@@ -102,7 +105,8 @@ class GenAccessMessageMap(Debug):
 
         Debug.psection("HeteroGen Mappings")
         self.Print_Dict(["NREQ_Msg", "REQ_Msg"], self.new_req_to_original_base_message_map)
-        self.Print_Nested_Dict(["CC_State", "Logical_Access", "Hidden_Access"], self.cache_state_logical_access_to_hidden_access)
+        self.Print_Nested_Dict(["CC_State", "Logical_Access", "Hidden_Access"],
+                               self.cache_state_logical_access_to_hidden_access)
         self.Print_Nested_Dict(["CC_State", "NREQ_Msg", "Access"], self.cache_state_new_req_to_access_map)
         self.Print_Nested_Dict(["CC_State", "NREQ_Msg", "REQ_Msg"], self.cache_state_to_new_req_base_message_map)
         self.Print_Nested_Dict(["DIR_State", "NREQ_Msg", "Access"], self.dir_state_req_base_message_access_map)
@@ -113,7 +117,6 @@ class GenAccessMessageMap(Debug):
         self.Print_Nested_Dict(["CC_State", "NFWD_Message", "Access"], self.cache_state_fwd_message_access_map)
         self.Print_Nested_Dict(["DIR_State", "REQ_Message", "NFWD_Message"], self.dir_state_req_to_new_fwd_msg_map)
         self.Print_Nested_Dict(["DIR_State", "NFWD_Message", "FWD_Message"], self.dir_state_fwd_to_new_fwd_msg_map)
-
 
     def det_immediate_access_map(self):
         for cache_state in self.level.cache.state_sub_tree_dict:
@@ -220,7 +223,7 @@ class GenAccessMessageMap(Debug):
             for cache_trace in cache_traces:
                 if not cache_trace.trace_trans:
                     continue
-                
+
                 if not self.get_trace_related_access(cache_trace):
                     continue
 
@@ -228,7 +231,8 @@ class GenAccessMessageMap(Debug):
                 dir_in_base_messages_set = set(self.get_base_messages_trace(dir_trace.guards_msg))
                 for msg_match in cache_out_base_messages_set.intersection(dir_in_base_messages_set):
 
-                    remote_cache_trace_list = [remote_trace for remote_trace in cache_traces if remote_trace != cache_trace]
+                    remote_cache_trace_list = [remote_trace for remote_trace in cache_traces if
+                                               remote_trace != cache_trace]
 
                     new_dir_state_base_message_tuple = (cache_trace, msg_match, dir_trace, remote_cache_trace_list)
 
@@ -242,10 +246,10 @@ class GenAccessMessageMap(Debug):
             self.pdebug(f"RCC : {str(t_tuple[0])}")
             self.pdebug(f"DIR : {str(t_tuple[2])}")
 
-            for ind in range (0, len(t_tuple[3])):
+            for ind in range(0, len(t_tuple[3])):
                 self.pdebug(f"FC{ind} : {str(t_tuple[3][ind])}")
             self.pdebug("")
-            
+
     @staticmethod
     def get_base_messages_trace(msg_list: List[Union[Message, BaseMessage, BaseAccess.Access]]) -> List[BaseMessage]:
         base_msg_list = []
@@ -259,7 +263,7 @@ class GenAccessMessageMap(Debug):
     def get_trace_related_access(self, cache_trace: Trace) -> BaseAccess.Access:
         if isinstance(cache_trace.init_guard, BaseAccess.Access):
             if str(cache_trace.init_guard) not in BaseAccess.Access_str_list:
-                return cache_trace.init_guard       # acquire, release, mfence, .....
+                return cache_trace.init_guard  # acquire, release, mfence, .....
 
             # The state is not a memory write state, so all the writes access permission request won't become visible
             # when fetching the data, hence it is only necessary to convey load access permissions to the directory
@@ -273,13 +277,13 @@ class GenAccessMessageMap(Debug):
                             if str(access) == BaseAccess.k_store]
 
             if silent_store:
-                return silent_store[0]          # store access
-            return cache_trace.init_guard       # load access
+                return silent_store[0]  # store access
+            return cache_trace.init_guard  # load access
 
         else:
             # The state is a memory write state, so all the writes are already visible to memory, hence it is not
             # necessary to convey the access to the directory
-            if (self.state_to_memory_write_message_map and 
+            if (self.state_to_memory_write_message_map and
                     cache_trace.start_state in self.state_to_memory_write_message_map):
                 return None
 
@@ -289,7 +293,7 @@ class GenAccessMessageMap(Debug):
                             if str(access) == BaseAccess.k_store]
 
             if silent_store:
-                return silent_store[0]          # store write back
+                return silent_store[0]  # store write back
             else:
                 # Update based protocols could have events forcing the cache blocks to update, so check if an access
                 # exists in the trace final state
@@ -344,16 +348,9 @@ class GenAccessMessageMap(Debug):
 
             if not access:
                 continue
-        
+
             # The actual access is a hidden access type
             orig_access = cache_dir_tuple[0].init_guard
-
-            if not isinstance(access, BaseAccess.Access):
-                continue
-
-            if not isinstance(orig_access, BaseAccess.Access):
-                continue
-
             # TODO do a smarter nesting of transition trees
             #   This makes the top-level protocol effectively MI (correct)
             #   For now, just Disable hidden_accesses (incorrect)
@@ -363,7 +360,8 @@ class GenAccessMessageMap(Debug):
                 if dir_state not in self.cache_state_logical_access_to_hidden_access:
                     self.cache_state_logical_access_to_hidden_access[cache_state] = {}
                 if access in self.cache_state_logical_access_to_hidden_access[cache_state]:
-                    self.perror("Multiple accesses hidden, not supported yet", orig_access == self.cache_state_logical_access_to_hidden_access[cache_state][access])
+                    self.perror("Multiple accesses hidden, not supported yet",
+                                orig_access == self.cache_state_logical_access_to_hidden_access[cache_state][access])
                 self.cache_state_logical_access_to_hidden_access[cache_state][access] = orig_access
 
             orig_base_message = cache_dir_tuple[1]
@@ -378,37 +376,40 @@ class GenAccessMessageMap(Debug):
 
             if dir_state not in self.dir_state_req_base_message_access_map:
                 self.dir_state_req_to_new_req_msg_map[dir_state] = {}
-                self.dir_state_req_base_message_access_map[dir_state] = {} 
+                self.dir_state_message_for_l2_private[dir_state] = {}
+                self.dir_state_req_base_message_access_map[dir_state] = {}
 
-            # Check if for a specific directory state a specific request is already associated with a different access
-            #if (dir_state in self.dir_state_req_base_message_access_map and
+                # Check if for a specific directory state a specific request is already associated with a different access
+            # if (dir_state in self.dir_state_req_base_message_access_map and
             #        base_message in self.dir_state_req_base_message_access_map[dir_state] and
             #        access != self.dir_state_req_base_message_access_map[dir_state][base_message]):
-                
+
             base_message = orig_base_message
             relabel = False
-            # Check if this type of request has already been previously renamed for a different dir_state 
+            # Check if this type of request has already been previously renamed for a different dir_state
             for reg_state, req_map in self.dir_state_req_base_message_access_map.items():
                 for rreq, raccess in req_map.items():
                     if rreq == orig_base_message:
                         if raccess != access:
                             relabel = True
                             # Generate new base message
-                            # base_message = self.gen_new_base_message(cache_dir_tuple[1], access)
+                            base_message = self.gen_new_base_message(cache_dir_tuple[1], access)
                             break
- 
+
                 if relabel:
                     break
 
             self.new_req_to_original_base_message_map[base_message] = orig_base_message
             self.cache_state_to_new_req_base_message_map[cache_state][base_message] = orig_base_message
             self.dir_state_req_to_new_req_msg_map[dir_state][base_message] = orig_base_message
+            # self.dir_state_message_for_l2_private[dir_state][base_message] = orig_base_message
             self.cache_state_new_req_to_access_map[cache_state][base_message] = access
             self.dir_state_req_base_message_access_map[dir_state][base_message] = access
 
             self.gen_new_fwd_base_messages_and_map_to_accesses(cache_dir_tuple, base_message, access)
 
-    def gen_new_fwd_base_messages_and_map_to_accesses(self, cache_dir_tuple, new_req_msg: BaseMessage, access: BaseAccess.Access):
+    def gen_new_fwd_base_messages_and_map_to_accesses(self, cache_dir_tuple, new_req_msg: BaseMessage,
+                                                      access: BaseAccess.Access):
         # List[Tuple[Trace, BaseMessage, Trace]]
 
         # Filter the messages that do not need to be renamed, this is the case if a certain message is unique to a
@@ -429,20 +430,20 @@ class GenAccessMessageMap(Debug):
                 new_fwd_msg = msg_match
 
                 relabel = False
-                # Check if this type of request has already been previously renamed for a different dir_state 
+                # Check if this type of request has already been previously renamed for a different dir_state
                 for reg_state, req_map in self.dir_state_req_to_new_fwd_msg_map.items():
                     for rreq, rfwd in req_map.items():
                         if rfwd == new_fwd_msg:
                             if rreq != new_req_msg:
                                 relabel = True
                                 # Generate new base message
-                                # new_fwd_msg = self.gen_new_base_message(msg_match, access)
+                                new_fwd_msg = self.gen_new_base_message(msg_match, access)
                                 break
                     if relabel:
                         break
 
                 if cache_state not in self.remote_cache_state_new_fwd_map:
-                    self.remote_cache_state_new_fwd_map[cache_state]={}
+                    self.remote_cache_state_new_fwd_map[cache_state] = {}
                     self.cache_state_fwd_message_access_map[cache_state] = {}
                 if dir_state not in self.dir_state_req_to_new_fwd_msg_map:
                     self.dir_state_req_to_new_fwd_msg_map[dir_state]={}
@@ -455,12 +456,11 @@ class GenAccessMessageMap(Debug):
                 self.cache_state_fwd_message_access_map[cache_state][new_fwd_msg] = access
 
     def map_cache_evict_as_fwd_msg(self):
-        store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[self.level.cache.global_arch.base_access.k_store]
+        store_access: BaseAccess = self.level.cache.global_arch.base_access.access_map[
+            self.level.cache.global_arch.base_access.k_store]
         for stable_state in self.level.cache.stable_states:
             for evict_transition in stable_state.evict_miss:
                 evict_guard: Evict = evict_transition.guard
-                if stable_state not in self.cache_state_fwd_message_access_map:
-                    self.cache_state_fwd_message_access_map[stable_state] = {}
                 self.cache_state_fwd_message_access_map[stable_state][evict_guard] = store_access
 
     def Print_Dict(self, header, map_dict):

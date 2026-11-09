@@ -160,6 +160,20 @@ class RunHH(Debug):
 
 
 
+        # L2 private for L1
+        l2_private_dir_1 = HHDirArchitecture_L2private(level_1_2_1, level_1_2_2, access_map_table, False)
+
+        #L2 private for L2
+        l2_private_dir_2 = HHDirArchitecture_L2private(level_2_2_1, level_2_2_2, access_map_table, False)
+
+        Debug.psection(f"Cache controller L1")
+        ProtoCCTablePrinter().ptransitiontable(list(level_1_1.cache.get_architecture_transitions()))
+        Debug.psection(f"Cache controller L2")
+        ProtoCCTablePrinter().ptransitiontable(list(level_2_1.cache.get_architecture_transitions()))
+        Debug.psection(f"Cache controller L1_2 private")
+        ProtoCCTablePrinter().ptransitiontable(list(level_1_2_1.directory.get_architecture_transitions()))
+        Debug.psection(f"Cache controller L2_2 private")
+        ProtoCCTablePrinter().ptransitiontable(list(level_2_2_1.directory.get_architecture_transitions()))
         # Run ProtoGen for each level
         #ProtoNetworkxBase(level_2)
 

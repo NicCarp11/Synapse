@@ -80,6 +80,7 @@ class TreeNetworkx(TreeBaseNetworkx, Debug):
         stable_state = self.get_root_node_by_attribute(new_sub_tree)
         self.state_sub_tree_dict[stable_state] = new_sub_tree
 
+        """
         # Do a sanity check
         trans_traces: List[List[Transition_v2]] = self.get_trans_traces(new_sub_tree, stable_state, self.stable_states)
 
@@ -88,6 +89,7 @@ class TreeNetworkx(TreeBaseNetworkx, Debug):
             if new_trace.final_state not in self.stable_states or new_trace.start_state not in self.stable_states:
                 Debug.pwarning("New trace start/final states do not match architecture stable states: "
                                + str(new_trace))
+       """
 
     ## Generates multiple graphs that are each triggered by a different single access transition
     # This is used to generate traces
