@@ -74,6 +74,10 @@ class ProxyDirStateMachine(TreeBaseNetworkx, GenProxyCacheStateTuples):
         proxy_dir_trans: Set[ProxyDirTransition] = set()
 
         for cache_final_state, dir_final_state in access_proxy_dir_trans_dict:
+            if cache_final_state not in evict_proxy_dir_trans_dict:
+                # The access ends in a state that is left without telling the directory (MESI-RC
+                # ntload: the untracked copy V), so the memoryless proxy cache cannot replay it
+                continue
             if dir_final_state in evict_proxy_dir_trans_dict[cache_final_state]:
                 evict_traces = evict_proxy_dir_trans_dict[cache_final_state][dir_final_state]
             else:
