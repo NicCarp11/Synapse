@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -32,12 +33,10 @@
 from Backend.SLICC.ModularSLICC.msg.GenMsgEnum import GenMsgEnum
 from Backend.SLICC.ModularSLICC.msg.GenMsgStruct import GenMsgStruct
 
-from Backend.SLICC.ModularSLICC.msg.GenDMADefault import GenDMADefault
 
 
-class GenMsgBase(GenMsgEnum, GenMsgStruct, GenDMADefault):
+class GenMsgBase(GenMsgEnum, GenMsgStruct):
 
     def __init__(self, template_dir):
         GenMsgEnum.__init__(self, template_dir)
         GenMsgStruct.__init__(self, template_dir)
-        GenDMADefault.__init__(self, template_dir)
