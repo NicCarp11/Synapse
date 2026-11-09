@@ -142,7 +142,6 @@
 //   -----------------------------------------------------------------------------------------------------------------------------------------------------
 //
 
-
 Network { 
           Ordered ndr;      // D2H Non-Data-Response (eq. resp PutX_Ack)
           Unordered drs;      // D2H Data-Response (eq. resp GetX_Ack)
@@ -178,9 +177,7 @@ Message Drs{
 Message BISnp{};
 Message BIRsp{};
 
-
 Architecture cache {
-
     Stable{I, S, E, M}
 
     // I ////////////////////////////////////////////////////////
@@ -210,114 +207,37 @@ Architecture cache {
           when BISnpData:
               msg = Req(BIConflict, ID, BISnpData.src);
               rwd.send(msg);
-              //await{
-              //    when BIConflictAck:
-              //        msg = BIRsp(BIRspS, ID, BIConflictAck.src);
-	      //        birsp.send(msg);
-	      //        await{
-	      //  	  when Cmp_S:
-	      //  	    State = S;
-	      //  	    await{
-	      //  		when MemData:
-	      //  		    cl=MemData.cl;
-	      //  		    load;
-	      //  		    break;
-	      //  	    }
-
-	      //  	  when Cmp_E:
-	      //  	    State = E;
-	      //  	    await{
-	      //  		when MemData:
-	      //  		    cl=MemData.cl;
-	      //  		    load;
-	      //  		    break;
-	      //  	    }
-	      //        }
-	      //    when Cmp_S:
-	      //      State = S;
-	      //      await{
-	      //  	when MemData:
-	      //  	    cl=MemData.cl;
-	      //  	    load;
-	      //  	    break;
-              //            // There's still one outstanding BIConflictAck -> must downgrade to S later when it is finally received
-	      //      }
-
-	      //    when Cmp_E:
-	      //      State = E;
-	      //      await{
-	      //  	when MemData:
-	      //  	    cl=MemData.cl;
-	      //  	    load;
-	      //  	    break;
-              //            // There's still one outstanding BIConflictAck -> must downgrade to S later when it is finally received
-	      //      }
-              //}
 
           when BISnpInv:
               msg = Req(BIConflict, ID, BISnpInv.src);
               rwd.send(msg);
-              //await{
-              //    when BIConflictAck:
-              //        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
-	      //        birsp.send(msg);
-	      //        await{
-	      //  	  when Cmp_S:
-	      //  	    State = S;
-	      //  	    await{
-	      //  		when MemData:
-	      //  		    cl=MemData.cl;
-	      //  		    load;
-	      //  		    break;
-	      //  	    }
 
-	      //  	  when Cmp_E:
-	      //  	    State = E;
-	      //  	    await{
-	      //  		when MemData:
-	      //  		    cl=MemData.cl;
-	      //  		    load;
-	      //  		    break;
-	      //  	    }
-	      //        }
-	      //    when Cmp_S:
-	      //      State = S;
-	      //      await{
-	      //  	when MemData:
-	      //  	    cl=MemData.cl;
-	      //  	    load;
-	      //  	    break;
-              //            // There's still one outstanding BIConflictAck -> must downgrade to I later when it is finally received
-	      //      }
-
-	      //    when Cmp_E:
-	      //      State = E;
-	      //      await{
-	      //  	when MemData:
-	      //  	    cl=MemData.cl;
-	      //  	    load;
-	      //  	    break;
-              //            // There's still one outstanding BIConflictAck -> must downgrade to I later when it is finally received
-	      //      }
-              //}  
           }
     }
 
-    //Process(I, load, State){
-    //    msg = Req(MemRdData_SnpData, ID, directory.ID);
-    //    req2.send(msg);
+    Process(I, ifetch, State){
+        msg = Req(MemRd_S_SnpDataIfetch, ID, directory.ID);
+        req2.send(msg);
 
-    //    await{
-    //      when Cmp_S:
-    //        State = S;
-    //        await{
-    //            when MemData:
-    //                cl=MemData.cl;
-    //                load;
-    //                break;
-    //        }
-    //    }
-    //}
+        await{
+          when Cmp_S:
+            State = S;
+            await{
+                when MemData:
+                    cl=MemData.cl;
+                    ifetch;
+                    break;
+            }
+
+          when BISnpData:
+              msg = Req(BIConflict, ID, BISnpData.src);
+              rwd.send(msg);
+
+          when BISnpInv:
+              msg = Req(BIConflict, ID, BISnpInv.src);
+              rwd.send(msg);
+          }
+    }
 
     Process(I, store, State){
         msg = Req(MemRd_A_SnpInv, ID, directory.ID);
@@ -337,57 +257,10 @@ Architecture cache {
               msg = Req(BIConflict, ID, BISnpData.src);
               rwd.send(msg);
 
-              //await{
-              //    when BIConflictAck:
-              //        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
-	      //        birsp.send(msg);
-	      //        await{
-	      //  	  when Cmp_E:
-	      //  	    State = M;
-	      //  	    await{
-	      //  		when MemData:
-	      //  		    cl=MemData.cl;
-	      //  		    store;
-	      //  		    break;
-	      //  	    }
-	      //        }
-              //    when Cmp_E:
-	      //      State = M;
-	      //      await{
-	      //  	when MemData:
-	      //  	    cl=MemData.cl;
-	      //  	    store;
-	      //  	    break;
-	      //      }
-              //}
-
           when BISnpInv:
               msg = Req(BIConflict, ID, BISnpInv.src);
               rwd.send(msg);
 
-              //await{
-              //    when BIConflictAck:
-              //        msg = BIRsp(BIRspI, ID, BIConflictAck.src);
-	      //        birsp.send(msg);
-	      //        await{
-	      //  	  when Cmp_E:
-	      //  	    State = M;
-	      //  	    await{
-	      //  		when MemData:
-	      //  		    cl=MemData.cl;
-	      //  		    store;
-	      //  		    break;
-	      //  	    }
-	      //        }
-              //    when Cmp_E:
-	      //      State = M;
-	      //      await{
-	      //  	when MemData:
-	      //  	    cl=MemData.cl;
-	      //  	    store;
-	      //  	    break;
-	      //      }
-              //}
         }
     }
 
@@ -412,6 +285,10 @@ Architecture cache {
     // S ////////////////////////////////////////////////////////
     Process(S, load){
         load;
+    }
+
+    Process(S, ifetch){
+        ifetch;
     }
 
     Process(S, BIConflictAck, I){
@@ -452,55 +329,17 @@ Architecture cache {
             when BISnpInv:
                 msg = Req(BIConflict, ID, BISnpInv.src);
                 rwd.send(msg);
-                //await{
-                //    when Cmp:
-		//	msg = BIRsp(BIRspI, ID, Cmp.src);
-		//	birsp.send(msg);
-                //        State = I;
-                //        break;
-                //}
 
             when BISnpData:
                 msg = Req(BIConflict, ID, BISnpData.src);
                 rwd.send(msg);
-                //await{
-                //    when Cmp:
-		//	msg = BIRsp(BIRspI, ID, Cmp.src);
-		//	birsp.send(msg);
-                //        State = I;
-                //        break;
-                //}
         }
     }
 
-    // Device wants an uncachable current copy of cache line
-    // We omit it for now, since directory will never use it
-    // TODO: double check if possible to receive in a Clean state
-    // Process(S, BISnpCur){
-    //    msg = Rwd(MemWr_S, ID, BISnpCur.src, cl);
-    //    rwd.send(msg);
-    //
-    //    await{
-    //        when Cmp:
-    //            msg = BIRsp(BIRspS, ID, Cmp.src);
-    //            birsp.send(msg);
-    //            break;
-    //    }
-    // }
+    // BISnpCur (an uncachable current copy) is never sent by the directory
 
     // Device wants a shared copy of cache line
-    // TODO: double check if possible to receive in a Clean state
     Process(S, BISnpData){
-        // msg = Rwd(MemWr_S, ID, BISnpData.src, cl);
-        // rwd.send(msg);
-
-        // await{
-        //     when Cmp:
-        //        msg = BIRsp(BIRspS, ID, Cmp.src);
-        //        birsp.send(msg);
-        //        break;
-        // }
-
         // State is clean, just reply
         msg = BIRsp(BIRspS, ID, BISnpData.src);
         birsp.send(msg);
@@ -513,10 +352,13 @@ Architecture cache {
         birsp.send(msg);
     }
 
-
     // M ////////////////////////////////////////////////////////
     Process(M, load){
         load;
+    }
+
+    Process(M, ifetch){
+        ifetch;
     }
 
     Process(M, store){
@@ -535,23 +377,9 @@ Architecture cache {
             when BISnpData:
                 msg = Req(BIConflict, ID, BISnpData.src);
                 rwd.send(msg);
-                //await{
-                //    when Cmp:
-                //        msg = BIRsp(BIRspI, ID, Cmp.src);
-                //        birsp.send(msg);
-                //        State = I;
-                //        break;
-                //}
             when BISnpInv:
                 msg = Req(BIConflict, ID, BISnpInv.src);
                 rwd.send(msg);
-                //await{
-                //    when Cmp:
-                //        msg = BIRsp(BIRspI, ID, Cmp.src);
-                //        birsp.send(msg);
-                //        State = I;
-                //        break;
-                //}
             when BIConflictAck:
 		await{
 		    when Cmp:
@@ -563,19 +391,7 @@ Architecture cache {
         }
     }
 
-    // Device wants an uncachable current copy of cache line
-    // We omit it for now, since directory will never use it
-    // Process(M, BISnpCur){
-    //    msg = Rwd(MemWr_A, ID, BISnpCur.src, cl);
-    //    rwd.send(msg);
-
-    //    await{
-    //        when Cmp:
-    //            msg = BIRsp(BIRspE, ID, BISnpCur.src);
-    //            birsp.send(msg);
-    //            break;
-    //    }
-    // }
+    // BISnpCur (an uncachable current copy) is never sent by the directory
 
     // Device wants a shared copy of cache line
     Process(M, BISnpData, State){
@@ -623,6 +439,10 @@ Architecture cache {
         load;
     }
 
+    Process(E, ifetch){
+        ifetch;
+    }
+
     Process(E, store, M){
         store;
     }
@@ -638,40 +458,13 @@ Architecture cache {
             when BISnpData:
                 msg = Req(BIConflict, ID, BISnpData.src);
                 rwd.send(msg);
-                //await{
-                //    when Cmp:
-                //        msg = BIRsp(BIRspI, ID, Cmp.src);
-                //        birsp.send(msg);
-                //        State = I;
-                //        break;
-                //}
             when BISnpInv:
                 msg = Req(BIConflict, ID, BISnpInv.src);
                 rwd.send(msg);
-                //await{
-                //    when Cmp:
-                //        msg = BIRsp(BIRspI, ID, Cmp.src);
-                //        birsp.send(msg);
-                //        State = I;
-                //        break;
-                //}
         }
     }
 
-    // Device wants an uncachable current copy of cache line
-    // We omit it for now, since directory will never use it
-    // TODO: check if possible to receive in a Clean state
-    // Process(E, BISnpCur){
-    //    msg = Rwd(MemWr_A, ID, BISnpCur.src, cl);
-    //    rwd.send(msg);
-    //
-    //    await{
-    //        when Cmp:
-    //            msg = BIRsp(BIRspE, ID, Cmp.src);
-    //            birsp.send(msg);
-    //            break;
-    //    }
-    // }
+    // BISnpCur (an uncachable current copy) is never sent by the directory
 
     // Device wants a shared copy of cache line
     Process(E, BISnpData, S){
@@ -682,18 +475,6 @@ Architecture cache {
 
     // Device wants exclusive copy of cache line
     Process(E, BISnpInv, I){
-        // TODO check if we can actually skip the CL writeback
-        // msg = Rwd(MemWr_I, ID, BISnpInv.src, cl);
-        // rwd.send(msg);
-
-        // await{
-        //    when Cmp:
-        //       msg = BIRsp(BIRspI, ID, Cmp.src);
-        //       birsp.send(msg);
-        //       State = I;
-        //       break;
-        // }
-        
         // State is clean, just reply
         msg = BIRsp(BIRspI, ID, BISnpInv.src);
         birsp.send(msg);
@@ -707,22 +488,10 @@ Architecture cache {
 
 }
 
-
 Architecture directory {
-
     Stable{I, S, E, M}
 
     // I ////////////////////////////////////////////////////////
-    //Process(I, MemRd_S_SnpData, S){
-    //   // Responding with Cmp_E is also valid, but discouraged since S was resquested (specs say so ...)
-    //   msg = Ndr(Cmp_S, ID, MemRd_S_SnpData.src);
-    //   ndr.send(msg);
-    //   msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
-    //   drs.send(msg);
-    //   //owner = MemRd_S_SnpData.src;
-    //   cache.add(MemRd_S_SnpData.src);
-    //}
-
     Process(I, MemRd_S_SnpData, E){
        // Responding with Cmp_E is also valid, but discouraged since S was resquested (specs say so ...)
        msg = Ndr(Cmp_E, ID, MemRd_S_SnpData.src);
@@ -730,18 +499,16 @@ Architecture directory {
        msg = Drs(MemData, ID, MemRd_S_SnpData.src, cl);
        drs.send(msg);
        owner = MemRd_S_SnpData.src;
-       //cache.add(MemRd_S_SnpData.src);
     }
-    
-    // Not used currently in Cache specs
-    //Process(I, MemRdData_SnpData, E){
-    //   // No meta value specified, respond with E
-    //   msg = Ndr(Cmp_E, ID, MemRdData_SnpData.src);
-    //   ndr.send(msg);
-    //   msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
-    //   drs.send(msg);
-    //   owner = MemRdData_SnpData.src;
-    //}
+
+    // Instruction fetch: always shared (see the cache's ifetch)
+    Process(I, MemRd_S_SnpDataIfetch, S){
+       msg = Ndr(Cmp_S, ID, MemRd_S_SnpDataIfetch.src);
+       ndr.send(msg);
+       msg = Drs(MemData, ID, MemRd_S_SnpDataIfetch.src, cl);
+       drs.send(msg);
+       cache.add(MemRd_S_SnpDataIfetch.src);
+    }
 
     Process(I, MemRd_A_SnpInv, M){
        msg = Ndr(Cmp_E, ID, MemRd_A_SnpInv.src);
@@ -768,16 +535,14 @@ Architecture directory {
        drs.send(msg);
        cache.add(MemRd_S_SnpData.src);
     }
-    
-    // Not used currently in Cache specs
-    //Process(S, MemRdData_SnpData){
-    //   // No meta value specified, respond with S
-    //   msg = Ndr(Cmp_S, ID, MemRdData_SnpData.src);
-    //   ndr.send(msg);
-    //   msg = Drs(MemData, ID, MemRdData_SnpData.src, cl);
-    //   drs.send(msg);
-    //   cache.add(MemRdData_SnpData.src);
-    //}
+
+    Process(S, MemRd_S_SnpDataIfetch){
+       msg = Ndr(Cmp_S, ID, MemRd_S_SnpDataIfetch.src);
+       ndr.send(msg);
+       msg = Drs(MemData, ID, MemRd_S_SnpDataIfetch.src, cl);
+       drs.send(msg);
+       cache.add(MemRd_S_SnpDataIfetch.src);
+    }
 
     Process(S, MemRd_A_SnpInv){
        // 1- If is in the sharer list, remove from sharer list
@@ -825,10 +590,6 @@ Architecture directory {
                     break;
                 }
 
-           //when MemClnEvct_I:
-           //     // Respond but wait for BIRspI to remove from sharers (otherwise we may concluse BISnp flow while some BIRsp are still in flight)
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
            //     // cache.del(MemClnEvct_I.src);
 
            // Other caches may have MemRd_A_SnpInv in-flight
@@ -856,9 +617,6 @@ Architecture directory {
            if cache.count() == 0 {
                msg = Ndr(Cmp_E, ID, requestor);
                ndr.send(msg);
-               // Requestor didn't ask for data
-               //msg = Drs(MemData, ID, requestor, cl);
-               //drs.send(msg);
                // Finally, update internal state
                owner = requestor;
                cache.clear();
@@ -898,9 +656,6 @@ Architecture directory {
                     if cache.contains(requestor) {
 		        msg = Ndr(Cmp_E, ID, requestor);
 		        ndr.send(msg);
-		        // Requestor didn't ask for data
-		        // msg = Drs(MemData, ID, requestor, cl);
-		        // drs.send(msg);
 		        // Finally, update internal state
 		        owner = requestor;
 		        cache.clear();
@@ -911,10 +666,6 @@ Architecture directory {
                     }
                 }
 
-           //when MemClnEvct_I:
-           //     // Respond but wait for BIRspI to remove from sharers (otherwise we may concluse BISnp flow while some BIRsp are still in flight)
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
            //     // cache.del(MemClnEvct_I.src);
 
            // Other caches may have MemRd_A_SnpInv in-flight
@@ -983,10 +734,73 @@ Architecture directory {
                State=S;
                break;
 
-           //when MemClnEvct_I:
-           //     // (Self eviction clean), simply respond and wait for completion message
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
+           when MemWr_S:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_S.src);
+                ndr.send(msg);
+                if MemWr_S.src == owner{
+                    cl = MemWr_S.cl;
+                }
+           
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+
+    Process(M, MemRd_S_SnpDataIfetch){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I before BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpData, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemRd_S_SnpDataIfetch.src;
+
+       await{
+           when BIRspS:
+               // Completion
+               undefine owner;
+               cache.add(BIRspS.src);
+               cache.add(requestor);
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
+               State=S;
+               break;
+
+           when BIRspI:
+               // Completion
+               cache.del(BIRspI.src);
+               undefine owner;
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               cache.add(requestor);
+               undefine requestor;
+               State=S;
+               break;
 
            when MemWr_S:
                 // Owner was dirty, WB and respond and wait for completion message
@@ -1043,11 +857,6 @@ Architecture directory {
                State=M;
                break;
 
-           //when MemClnEvct_I:
-           //     // (Self eviction clean), simply respond and wait for completion message
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
-
            when MemWr_I:
                 // Owner was dirty, WB and respond and wait for completion message
                 msg = Ndr(Cmp, ID, MemWr_I.src);
@@ -1095,11 +904,6 @@ Architecture directory {
                State=M;
                break;
 
-           //when MemClnEvct_I:
-           //     // (Self eviction clean), simply respond and wait for completion message
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
-
            when MemWr_I:
                 // Owner was dirty, WB and respond and wait for completion message
                 msg = Ndr(Cmp, ID, MemWr_I.src);
@@ -1117,8 +921,6 @@ Architecture directory {
        }
 
     }
-
-
 
     // Host wants to WB and drop its copy
     Process(M, MemWr_I){
@@ -1202,10 +1004,73 @@ Architecture directory {
                State=S;
                break;
 
-           //when MemClnEvct_I:
-           //     // (Self eviction clean), simply respond and wait for completion message
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
+           when MemWr_S:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_S.src);
+                ndr.send(msg);
+                if MemWr_S.src == owner{
+                    cl = MemWr_S.cl;
+                }
+           
+           when MemWr_I:
+                // Owner was dirty, WB and respond and wait for completion message
+                msg = Ndr(Cmp, ID, MemWr_I.src);
+                ndr.send(msg);
+                if MemWr_I.src == owner{
+                    cl = MemWr_I.cl;
+                }
+           
+           // Other caches may have MemRd_A_SnpInv in-flight
+           when BIConflict:
+                // Host had outstanding Req for that cache line,
+                // reply with ACK and wait for their BIRspI
+                msg = Ndr(BIConflictAck, ID, BIConflict.src);
+                ndr.send(msg);
+       }
+
+    }
+
+    Process(E, MemRd_S_SnpDataIfetch){
+       // 1- Invalidate owner and wait for MemWr
+       //   - May be dirty, so can receive MemWr_I or MemClnEvct_I before BIRspI
+       //   - If dirty, host will wait for Cmp before replying with BIRspI, so ordering isn't an issue
+       // 3- Once invalidated, reply back to requestor
+       
+       msg = BISnp(BISnpData, ID, owner);
+       bisnp.send(msg);
+
+       requestor = MemRd_S_SnpDataIfetch.src;
+
+       await{
+           when BIRspS:
+               // Completion
+               undefine owner;
+               cache.add(BIRspS.src);
+               cache.add(requestor);
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
+               State=S;
+               break;
+
+           when BIRspI:
+               // Completion
+               undefine owner;
+               cache.del(BIRspI.src);
+               cache.add(requestor);
+
+               msg = Ndr(Cmp_S, ID, requestor);
+               ndr.send(msg);
+               msg = Drs(MemData, ID, requestor, cl);
+               drs.send(msg);
+
+               undefine requestor;
+               State=S;
+               break;
 
            when MemWr_S:
                 // Owner was dirty, WB and respond and wait for completion message
@@ -1251,7 +1116,6 @@ Architecture directory {
                // Host can only send Req/RwD, or respond to BISnp.
                // If Req/RwD are received first, Host will wait for completion before responding to BISnp
                // In all, BIResp can only be received last, even with unordered network.
-               // TODO: check if we are not more restrictive than specs for blocked Req/RwD here
                cache.del(BIRspI.src);
                undefine owner;
 
@@ -1265,11 +1129,6 @@ Architecture directory {
                cache.clear();
                State=M;
                break;
-
-           //when MemClnEvct_I:
-           //     // (Self eviction clean), simply respond and wait for completion message
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
 
            when MemWr_I:
                 // Owner was dirty, WB and respond and wait for completion message
@@ -1307,7 +1166,6 @@ Architecture directory {
                // Host can only send Req/RwD, or respond to BISnp.
                // If Req/RwD are received first, Host will wait for completion before responding to BISnp
                // In all, BIResp can only be received last, even with unordered network.
-               // TODO: check if we are not more restrictive than specs for blocked Req/RwD here
                cache.del(BIRspI.src);
                undefine owner;
 
@@ -1321,11 +1179,6 @@ Architecture directory {
                cache.clear();
                State=M;
                break;
-
-           //when MemClnEvct_I:
-           //     // (Self eviction clean), simply respond and wait for completion message
-           //     msg = Ndr(Cmp, ID, MemClnEvct_I.src);
-           //     ndr.send(msg);
 
            when MemWr_I:
                 // Owner was dirty, WB and respond and wait for completion message
@@ -1344,8 +1197,6 @@ Architecture directory {
        }
 
     }
-
-
 
     // Host wants to WB and drop its copy
     Process(E, MemWr_I){
