@@ -88,8 +88,19 @@ class GenAccessRuleSet(TemplateHandler, Debug):
                 if not config.enable_evicts and isinstance(guard, BaseAccess.Evict):
                     continue
 
+                # Synapse harness: as in the simulator, only a block the cache holds is evicted
+                if isinstance(guard, BaseAccess.Evict) and not self._holds_block(arch, state):
+                    continue
+
                 access_rules_str += self.gen_access_rule(arch, state_transition_dict[state][guard], config) + self.nl
         return access_rules_str
+
+    @staticmethod
+    def _holds_block(arch, state) -> bool:
+        # the states in which the SLICC back end keeps no entry for the block (an access performed
+        # without a copy, such as a MESI-RC ntstore in I, does not make it present)
+        from Backend.SLICC.ModularSLICC.common import Util
+        return state not in Util.get_invalid_states(arch)
 
     def gen_access_rule(self, arch: FlatArchitecture, transitions: List[Transition_v2], config: BaseConfig) -> str:
         aux_checks_str = ""
