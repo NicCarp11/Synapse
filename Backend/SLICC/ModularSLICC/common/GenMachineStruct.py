@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -31,16 +32,17 @@
 
 from typing import List
 from antlr3.tree import CommonTree
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
-from Parser.ProtoCCcomTreeFct import objListToStringList
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
+from Backend.SLICC.ModularSLICC.common import Util
+from Parser.NetworkxParser.ClassProtoParserBase import ProtoParserBase
 
 
 class GenMachineStruct:
 
     @staticmethod
-    def gen_machine_struct_body_str(temp_h: TemplateHandler, arch: BaseArchitecture) -> str:
+    def gen_machine_struct_body_str(temp_h: TemplateHandler, arch: FlatArchitecture) -> str:
         body_strs = []
         for variable in arch.machine.variables.values():
             # TODO this basic version does not track GlobalInit a la Murphi backend...
@@ -71,7 +73,7 @@ class GenMachineStruct:
     @staticmethod
     def _gen_cache_line(definition: CommonTree, arch: FlatArchitecture) -> str:
         tokens = definition.getChildren()
-        return f"{SLICCTokens.st_data} {tokens[-1].getText()}, desc=\"... TODO ...\";"
+        return f"{SLICCTokens.st_data} {tokens[-1].getText()};"
 
     @staticmethod
     def _gen_identifier(definition: CommonTree, arch: FlatArchitecture) -> str:
@@ -80,20 +82,19 @@ class GenMachineStruct:
             return GenMachineStruct._gen_net_dest(tokens)
         else:
 
-            return f"{SLICCTokens.st_mach_id} {tokens[-1].getText()}, desc=\"... TODO ...\";"
+            return f"{SLICCTokens.st_mach_id} {tokens[-1].getText()};"
 
     @staticmethod
     def _gen_net_dest(tokens: List[CommonTree]) -> str:
         # For now, assuming only using sets to refer to other machines
-        return f"{SLICCTokens.st_net_dest} {tokens[0].getText()}, desc=\"... TODO ...\";"
+        return f"{SLICCTokens.st_net_dest} {tokens[0].getText()};"
 
     @staticmethod
     def _gen_int(definition: CommonTree, arch: FlatArchitecture) -> str:
         # Unlike Murphi, SLICC is not a verification engine and therefore does not
         # require ints to be bounded
         tokens = definition.getChildren()
-        return f"{SLICCTokens.st_int} {tokens[0].getText()}, default={tokens[-1].children[0].getText()}, " \
-               "desc=\"...TODO...\";"
+        return f"{SLICCTokens.st_int} {tokens[0].getText()}, default={tokens[-1].children[0].getText()};"
 
     @staticmethod
     def _gen_bool(definition: CommonTree, arch: FlatArchitecture) -> str:
@@ -103,13 +104,14 @@ class GenMachineStruct:
     def _gen_msg(definition: CommonTree, arch: FlatArchitecture) -> str:
         if str(definition.getChildren()[0]) in getattr(arch, "proxy_keys", {}).values():
             result = ""
-            for m_name, m_type in SLICCTokens.proxy_key_fields.items():
-                #assert m_type == ProtoParserBase.t_id
+            slicc_types = {ProtoParserBase.t_id: SLICCTokens.st_mach_id,
+                           ProtoParserBase.t_bool: SLICCTokens.st_bool,
+                           ProtoParserBase.t_int: SLICCTokens.st_int,
+                           ProtoParserBase.t_data: SLICCTokens.st_data,
+                           SLICCTokens.st_write_mask: SLICCTokens.st_write_mask}
+            for m_name, m_type in Util.proxy_key_fields(arch, str(definition.getChildren()[0])).items():
                 if len(result) > 0:
                     result += "\n"
-                if m_type == ProtoParserBase.t_id:
-                    result += f"{SLICCTokens.st_mach_id} {str(definition.getChildren()[0])}_{m_name}, desc=\"... TODO ...\";"
-                elif m_type == ProtoParserBase.t_bool:
-                    result += f"{SLICCTokens.st_bool} {str(definition.getChildren()[0])}_{m_name}, desc=\"... TODO ...\";"
+                result += f"{slicc_types[m_type]} {str(definition.getChildren()[0])}_{m_name};"
             return result
         raise NotImplementedError

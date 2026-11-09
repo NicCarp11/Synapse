@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -45,6 +46,8 @@ from Debug.Monitor.ClassDebug import Debug
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
+from Algorithms.ControllerGeneration.General.DeferMessage.NestedDeferMessage import NestedDeferMessage
+from Backend.SLICC.ModularSLICC.BackendOptions import OPTIONS, LLC_BANKED, LLC_RANGE
 
 
 class GenPCCToSLICC(TemplateHandler, Debug):
@@ -71,12 +74,13 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
         self.cluster = cluster
         self.arch = arch
+        self.cache = cache
         self.local_variables: Dict[str, str] = {}
         self.out_ports = out_ports
         self.machine_mappings = machine_mappings
 
         self.constructed_messages = {}
-        self.out_direction = "From" if self.arch.machine.check_dir() else "To"
+        self.out_direction = "From" if not cache else "To"
 
         # These variables do need to be reset for every new transition
         self.cur_guard_str: str = ""
@@ -84,6 +88,16 @@ class GenPCCToSLICC(TemplateHandler, Debug):
         if isinstance(arch, NestedDeferMessage):
             self.proxy_keys = arch.proxy_keys.values()
 
+    # SLICC types of the message payload fields that may be snapshotted (data blocks are not)
+    msg_field_types = {
+        ProtoParserBase.t_int: SLICCTokens.st_int,
+        ProtoParserBase.t_bool: SLICCTokens.st_bool,
+        ProtoParserBase.t_id: SLICCTokens.st_mach_id,
+    }
+
+    @staticmethod
+    def _reads_mutable_state(value: str) -> bool:
+        return "getEntry(" in value or "tbe." in value
 
     def new_transition(self, guard: str):
         self.cur_guard_str = guard
@@ -93,7 +107,6 @@ class GenPCCToSLICC(TemplateHandler, Debug):
         op = str(operation)
 
         if op == ProtoParserBase.k_assign:
-            # TODO: Gen architecture assignment
             assignments = self.gen_assignment(operation)
             if not assignments:
                 return None
@@ -126,10 +139,11 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             net, message_var = childsToStringList(operation)
             assert message_var in self.constructed_messages, f"tried to send {message_var} which does not exist"
             message_dict = self.constructed_messages[message_var]
+            Util.drop_unread_data(message_dict, self.arch.global_arch)
             net = f"{net}{self.out_direction}"
 
             body = f"out_msg.LineAddress := LineAddress{self.end}" \
-                   f"out_msg.MessageSize := {Util.get_message_size(message_dict, self.cluster)}{self.end}" \
+                   f"out_msg.MessageSize := {Util.get_message_size(message_dict, self.arch.global_arch)}{self.end}" \
                    f"out_msg.Destination.add({message_dict.pop('Destination')}){self.end}"
             for field, val in message_dict.items():
                 body += f"out_msg.{field} := {val}{self.end}"
@@ -138,13 +152,13 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                    f"{{{self.nl}{body}{self.nl}}}{self.nl}"
 
         elif op == ProtoParserBase.k_mcast:
-            # assert not self.cache, "TODO only dirs allowed to mcast for now"
             net, message_var, destination_set = childsToStringList(operation)
             assert message_var in self.constructed_messages, f"tried to send {message_var} which does not exist"
             message_dict = self.constructed_messages[message_var]
+            Util.drop_unread_data(message_dict, self.arch.global_arch)
             net = f"{net}{self.out_direction}"
             body = f"out_msg.LineAddress := LineAddress{self.end}" \
-                   f"out_msg.MessageSize := {Util.get_message_size(message_dict, self.cluster)}{self.end}" \
+                   f"out_msg.MessageSize := {Util.get_message_size(message_dict, self.arch.global_arch)}{self.end}" \
                    f"out_msg.Destination := getEntry(LineAddress).{destination_set}{self.end}"
             message_dict.pop("Destination")  # Destination field overwritten by multicasting
             for field, val in message_dict.items():
@@ -158,6 +172,13 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
         elif op == ProtoParserBase.k_break:
             return ""
+
+        elif op == ProtoParserBase.k_access:
+            # The bytes of a store of release-consistency code, which the sequencer does not write
+            if Util.is_rc_store(self.cur_guard_str) and str(operation.getChildren()[0]) == "store":
+                return f"writeRCData(tbe, getEntry(LineAddress), LineAddress, " \
+                       f"{SLICCTokens.k_in_msg}.WTData, {SLICCTokens.k_in_msg}.{SLICCTokens.write_mask}){self.end}"
+            return None
 
     def gen_assignment(self, operation: CommonTree) -> Union[str, None]:
         tokens = operation.getChildren()
@@ -175,25 +196,50 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                             'Sender': self._msg_src_dest(message_entries[2]),
                             'Destination': self._msg_src_dest(message_entries[3])
                             }
-            matched_msg_node_vars = None
+            matched_msg_type = None
             for msg_name, msg_type in self.arch.global_arch.network.msg_types.items():
-                if msg_name == message_entries[0].getText():
-                    matched_msg_node_vars = list(msg_type.msg_vars.keys())
-            assert matched_msg_node_vars is not None
+                if str(msg_type) == message_entries[0].getText():
+                    matched_msg_type = msg_type
+            assert matched_msg_type is not None
+            matched_msg_node_vars = list(matched_msg_type.msg_vars.keys())
+
+            # The payload is evaluated when the message is constructed (PCC semantics). Fields that
+            # read mutable controller state (e.g. `cache.count()`) are therefore snapshotted into a
+            # local variable here; otherwise the expression would be evaluated where the field is
+            # used, possibly after the state changed (e.g. after `cache.clear()`).
+            # Not for machines that access main memory: GenMachineInPorts.replace_mem_ops moves the
+            # code after a memory access into the memory response handler, where a local declared
+            # here would be out of scope. There the whole sub-tree moves together while the
+            # directory waits in a transient state, so the deferred evaluation is equivalent.
+            snapshot = not Util.must_access_memory(self.cache)
+            snapshots = []
             for idx, entry in enumerate(message_entries[4:]):
-                message_dict[matched_msg_node_vars[idx]] = self.gen_right_assignment(entry)[0]
+                field = matched_msg_node_vars[idx]
+                value = self.gen_right_assignment(entry)[0]
+                slicc_type = self.msg_field_types.get(str(matched_msg_type.msg_vars[field]))
+                if snapshot and slicc_type is not None and self._reads_mutable_state(value):
+                    local = f"{var_name}_{field}"
+                    snapshots.append(f"{slicc_type} {local} := {value}{self.end}")
+                    value = local
+                message_dict[field] = value
+
+            if message_entries[1].getText() in Util.partial_messages(self.arch.global_arch):
+                message_dict[SLICCTokens.write_mask] = self._write_mask(message_entries[1].getText())
 
             self.constructed_messages[var_name] = message_dict
-            return None
+            return "".join(snapshots) if snapshots else None
         elif var_name in self.proxy_keys:
             if not str(operation.getChildren()[2]) in self.arch.global_arch.network.base_message_dict:
                 return f"//Skipped {var_name} := {str(operation.getChildren()[2])}"
             right_side, right_type = self.gen_right_assignment(operation.getChildren()[2])
             assert right_type == ProtoParserBase.t_msg
             result = ""
-            for m in SLICCTokens.proxy_key_fields.keys():
+            for m in Util.proxy_key_fields(self.arch, var_name).keys():
                 result += Util.get_entry_variable(self.arch, self.cache, var_name, f"{var_name}_{m} := {right_side}.{SLICCTokens.field_map.get(m, m)}" + self.end)
             return result
+        elif var_name in self.arch.machine.variables and self._partial_source(operation) is not None:
+            data, mask = self._partial_source(operation)
+            return f"mergeCacheBlock(tbe, getEntry(LineAddress), LineAddress, {data}, {mask}){self.end}"
         elif var_name in self.arch.machine.variables:
             # return Util.get_entry_variable(self.arch, self.cache, var_name,
             #                                self._exist_var_assignment(var_name, operation))
@@ -203,7 +249,6 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                 else:
                     return Util.get_entry_variable(self.arch, self.cache, var_name,
                                                    self._exist_var_assignment(var_name, operation))
-                    # return Util.get_entry_variable(self.arch, self.cache, var_name, self._exist_var_assignment(var_name, operation))
             else:
                 return Util.get_entry_variable(self.arch, self.cache, var_name, self._exist_var_assignment(var_name, operation))
         elif var_name in self.local_variables:
@@ -215,6 +260,36 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             assign_str, data_type = self.gen_right_assignment(operation.getChildren()[2])
             self.local_variables[var_name] = data_type
             return var_name + " := " + assign_str + self.end
+
+    def _write_mask(self, msg_name: str) -> str:
+        """The write mask of a partial message: that of the store of release-consistency code or of
+        the partial message being served, or that of the deferred request of a proxy."""
+        if Util.is_rc_store(self.cur_guard_str) \
+                or self.cur_guard_str in Util.partial_messages(self.arch.global_arch):
+            return f"{SLICCTokens.k_in_msg}.{SLICCTokens.write_mask}"
+        keys = sorted(self.proxy_keys)
+        assert keys, f"{msg_name}: no write mask to send in {self.arch} on {self.cur_guard_str}"
+        key = next((k for k in keys if msg_name.endswith(k[len("proxy_msg"):])), keys[0])
+        return Util.get_entry_variable(self.arch, self.cache, key, f"{key}_{SLICCTokens.write_mask}")
+
+    def _partial_source(self, operation: CommonTree) -> Union[Tuple[str, str], None]:
+        """(data, write mask) if the operation assigns the cache line from a partial message: the one
+        being served, or the deferred request of a proxy when the protocol has partial messages (a
+        deferred request that is not partial has an empty mask, which merges the whole block)."""
+        partial = Util.partial_messages(self.arch.global_arch)
+        if not partial or str(operation.getChildren()[0]) != Util.get_active_cache_line(self.arch):
+            return None
+        right = operation.getChildren()[2]
+        source = str(right)
+        data_var = Util.get_message_data_var(self.arch.global_arch)
+        if "".join(childsToStringList(right))[1:] != data_var:
+            return None
+        if source == self.cur_guard_str and source in partial:
+            return f"{SLICCTokens.k_in_msg}.{data_var}", f"{SLICCTokens.k_in_msg}.{SLICCTokens.write_mask}"
+        if source in self.proxy_keys:
+            return (Util.get_entry_variable(self.arch, self.cache, source, f"{source}_{data_var}"),
+                    Util.get_entry_variable(self.arch, self.cache, source, f"{source}_{SLICCTokens.write_mask}"))
+        return None
 
     def _exist_var_assignment(self, var_name: str, operation: CommonTree):
         assign_str = ""
@@ -228,10 +303,10 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                 else:
                     rev_var_type = str(self.local_variables[var_name])
 
-                # Do type checking to check if variable is assigned different values breaking Murphi
-                #self.p_error("Variable: " + var_name + " is used for different data types: " +
-                #            str(data_type) + " | " + str(rev_var_type) + "this is not supported by Murphi",
-                #            str(data_type) == str(rev_var_type))
+                # Ensure that the type of the variable is consistent
+                self.perror("Variable: " + var_name + " is used for different data types: " +
+                            str(data_type) + " | " + str(rev_var_type) + "this is not supported by SLICC",
+                            str(data_type) == str(rev_var_type))
 
         return var_name + " := " + assign_str + self.end
 
@@ -257,11 +332,18 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             return replacement, msg_type
         elif right_assignment in self.proxy_keys:
             m_name = "".join(childsToStringList(operation))[1:]
-            m_type = SLICCTokens.proxy_key_fields[m_name]
+            m_type = Util.proxy_key_fields(self.arch, right_assignment)[m_name]
             return Util.get_entry_variable(self.arch, self.cache, right_assignment,  f"{right_assignment}_{m_name}"), m_type
         elif right_assignment in self.arch.machine.variables:
-            return Util.get_entry_variable(self.arch, right_assignment, right_assignment), \
-                   self.arch.machine.variables[right_assignment]
+            right_type = self.arch.machine.variables[right_assignment]
+            right_value = right_assignment
+            if str(right_type) == ProtoParserBase.t_msg and len(operation.getChildren()) > 1:
+                field = str(operation.getChildren()[1])
+                right_type = SLICCTokens.base_message_vars[field]
+                right_value += "." + SLICCTokens.field_map.get(field, field)
+
+
+            return Util.get_entry_variable(self.arch, self.cache, right_assignment, right_value), right_type
         elif right_assignment in self.local_variables:
             return right_assignment, self.local_variables[right_assignment]
 
@@ -272,7 +354,7 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                 return self._in_msg_assignment(right_assignment, operation)
             # The current guard in an event
             else:
-                self.p_error("EVENTS NOT IMPLEMENTED YET")
+                self.perror("EVENTS NOT IMPLEMENTED YET")
 
         elif right_assignment == ProtoParserBase.k_setfunc:
             return self.gen_set_function(operation), None
@@ -283,7 +365,7 @@ class GenPCCToSLICC(TemplateHandler, Debug):
 
     def _msg_src_dest(self, operation: CommonTree) -> str:
         if str(operation) in self.arch.global_arch.network.base_message_dict:
-            field = ''.join(childsToStringList(operation))
+            field = ''.join(childsToStringList(operation))[1:]
             field = SLICCTokens.field_map.get(field, field)
             return f"{SLICCTokens.k_in_msg}.{field}"
         elif str(operation) in self.proxy_keys:
@@ -304,13 +386,12 @@ class GenPCCToSLICC(TemplateHandler, Debug):
             if idx < len(keys) - 2:
                 next_key = keys[idx + 1]
                 mt = self.machine_mappings[next_key]
+                if OPTIONS.llc_mapping in (LLC_BANKED, LLC_RANGE):
+                    return (f"mapAddressToRange(LineAddress, MachineType:{mt}, l2_select_low_bit, "
+                            f"l2_select_num_bits, intToID({mt}_id))")
                 return f"createMachineID(MachineType:{mt},intToID({mt}_id))"
             else:
                 return f"mapAddressToMachine(LineAddress, MachineType:{self.machine_mappings[str(operation)]})"
-            #if str(operation) in set(str(level) for level in self.cluster.get_machine_architectures() if level.machine.mach_type == ProtoMachine.k_dir):
-            #    # Need to translate directory to use SLICC's directory-mapping function
-            #    return "mapAddressToMachine(LineAddress, MachineType:Directory)"
-            #return str(operation)
         else:
             return SLICCTokens.k_mach
 
@@ -334,9 +415,9 @@ class GenPCCToSLICC(TemplateHandler, Debug):
                         var_type = str(base_msg_defs[obj_var])
                         break
 
-            field = ''.join(childsToStringList(operation))
+            field = ''.join(childsToStringList(operation))[1:]
             field = SLICCTokens.field_map.get(field, field)
-            return f"{SLICCTokens.k_in_msg}{field}", var_type
+            return f"{SLICCTokens.k_in_msg}.{field}", var_type
 
         # No children exist so the assignment is the entire message object
         else:
@@ -366,13 +447,12 @@ class GenPCCToSLICC(TemplateHandler, Debug):
         return "}" + self.nl
 
     @staticmethod
-    def gen_final_state(temp_h: TemplateHandler, state: str, arch: FlatArchitecture) -> str:
+    def gen_final_state(temp_h: TemplateHandler, state: str, cache: bool) -> str:
 
-        if arch.machine.check_cache():
+        if cache:
             return f"setState(tbe, getEntry(LineAddress), LineAddress, State:{state})" \
                    f"{temp_h.end}"
         else:
-            assert arch.machine.check_dir(), f"Arch {arch} was not level.cache or level.directory"
             return f"setState(tbe, LineAddress, State:{state}){temp_h.end}"
 
     @staticmethod
@@ -416,3 +496,7 @@ class GenPCCToSLICC(TemplateHandler, Debug):
     @staticmethod
     def _gen_vector_count(*args: List[str]) -> str:
         return f"{args[0]}.count()"
+
+    @staticmethod
+    def _gen_vector_smallest(*args: List[str]) -> str:
+        return f"{args[0]}.smallestElement()"

@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -28,9 +29,9 @@
 #
 #
 #
-from DataObjects.Architecture.ClassBaseArchitecture import BaseArchitecture
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
+from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
 
 
 class GenMachineHeader:
@@ -44,15 +45,16 @@ class GenMachineHeader:
         machine_id = id_mapping[keys[index]]
         if index < len(keys) - 1:
             next_machine_id = id_mapping[keys[index + 1]]
-        net_node = arch.global_arch.network.network_node
-        definitions = net_node.getChildren()
+        # Virtual networks are numbered in the declaration order of the (merged) networks, the same for
+        # every machine; a machine declares the networks it uses only (Util.used_networks), each with
+        # two buffers, one "to" and one "from" the network.
+        used = Util.used_networks(arch)
         # Will have to worry about the ordering constraints when setting up the config file, not now
-        for idx, net in enumerate(definitions):
-            # For now, set up two SLICC message buffers per network; one "to" (the dir) and one "from" (the dir).
-            # Later, we should figure out which of these are not needed (e.g. forwardTo[dir] is not needed).
+        for idx, net_name in enumerate(arch.global_arch.network.network_order):
+            if used and net_name not in used:
+                continue
             virtual_channel = str(idx)
             for direction in ("To", "From"):
-                net_name = net.getChildren()[1].getText()
                 net_direction = direction if not flip_direction else Util.reverse_direction(direction)
                 nets.append(temp_h.string_repl_keys(temp_h.open_template("message_buffer.sm"),
                                                     [net_name + direction,
@@ -68,4 +70,3 @@ class GenMachineHeader:
             return temp_h.string_repl_keys(temp_h.open_template(template_file), [machine_id, next_machine_id, nets_str])
         else:
             return temp_h.string_repl_keys(temp_h.open_template(template_file), [machine_id, nets_str])
-

@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -37,14 +38,13 @@ from DataObjects.ClassMultiDict import MultiDict
 from DataObjects.Transitions.ClassTransitionv2 import Transition_v2
 from networkx import DiGraph
 
-from Parser.ParserDataTypes.ClassBaseNetwork import BaseMessage
 from Backend.SLICC.ModularSLICC import SLICCTokens
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 from Backend.SLICC.ModularSLICC.common import Util
 from Backend.SLICC.ModularSLICC.common.GenPCCToSLICC import GenPCCToSLICC
 from Backend.SLICC.ModularSLICC.common.GenSLICCTree import GenSLICCTree, UniqueNode
+from Parser.DataTypes.ClassBaseNetwork import BaseMessage
 
-from Algorithms.HeteroGen.ClassHHDirArchitecture import HHDirArchitecture
 
 # TODO this class should probably be re-written to not be fully static so as to reduce the number of arguments
 # being passed around... Keeping it like this for now to remain consistent with the rest of the code base
@@ -56,6 +56,8 @@ class GenMachineInPorts:
             temp_h: TemplateHandler,
             cluster: Cluster,
             arch: FlatArchitecture,
+            cache: bool,
+            arch_name: str,
             in_ports: 'OrderedDict[str, str]',
             out_ports: 'OrderedDict[str, str]',
             machine_mappings: dict[str, str],
@@ -78,6 +80,8 @@ class GenMachineInPorts:
             port_name: str,
             cluster: Cluster,
             arch: FlatArchitecture,
+            cache: bool,
+            arch_name: str,
             out_ports: 'OrderedDict[str, str]',
             machine_mappings: dict[str, str],
             main_mem_accesses: Dict[Tuple[str, str], DiGraph],
@@ -89,14 +93,16 @@ class GenMachineInPorts:
         first = True
         slicc_tree_gen = GenSLICCTree(cluster, arch, cache, port_name, out_ports, machine_mappings, allow_port_popping=True)
 
+        # net_name is the network followed by the direction ("reqFrom"); compare whole names, "req2From"
+        # is not a "req" port
         evict_section = ""
         for port, section in evict_code.items():
-            if net_name.startswith(port):
+            if net_name in (port + "From", port + "To"):
                 evict_section = section + temp_h.nl
 
         msgset = None
         for netname, msgs in Util.get_msg_port_mapping(cluster).items():
-            if net_name.startswith(netname):
+            if net_name in (netname + "From", netname + "To"):
                 msgset = msgs
         assert msgset is not None
 
@@ -135,10 +141,9 @@ class GenMachineInPorts:
             if op_string:
                 op_string += f"{temp_h.nl}{temp_h.tab}}} else {{{temp_h.nl}{temp_h.tab * 2}" \
                              f'{Util.gen_stall_str(temp_h, cache, port_name)}{temp_h.nl}{temp_h.tab}}}'
-                             #f'error("Invalid transition");{temp_h.nl}{temp_h.tab}}}'
             else:
                 # Have not generated a body for this clause as there are no expected transitions
-                op_string = f"{temp_h.tab}{Util.gen_stall_str(temp_h, arch, port_name)}"
+                op_string = f"{temp_h.tab}{Util.gen_stall_str(temp_h, cache, port_name)}"
 
             prefix_str = f"if (st == State:{str(state)}) {{"
             body_str = f"{temp_h.nl}{op_string}{temp_h.nl}}}"
@@ -154,11 +159,10 @@ class GenMachineInPorts:
             state_strs.append(state_str)
 
         else_body = temp_h.add_tabs(f"{Util.gen_stall_str(temp_h, cache, port_name)}",3)
-        # else_body = temp_h.add_tabs(f'error("Invalid transition");',3)
         if not first:
             state_strs.append(f" else {{{temp_h.nl}{temp_h.tab}{else_body}{temp_h.nl}{temp_h.tab * 3}}}")
         else:
-            state_strs.append(temp_h.add_tabs(f'error("Invalid transition");',3))
+            state_strs.append(temp_h.add_tabs('error("Invalid transition");', 3))
 
         return temp_h.string_repl_keys(temp_h.open_template(GenMachineInPorts.template_file),
                                        [port_name,
@@ -228,7 +232,7 @@ class GenMachineInPorts:
     def replace_mem_ops(
             temp_h: TemplateHandler,
             arch: FlatArchitecture,
-            cluster: Cluster,
+            cache: bool,
             operation_tree: DiGraph,
             cache_line: str,
             transitions: [Transition_v2],
@@ -259,7 +263,7 @@ class GenMachineInPorts:
 
         for idx, (access_node, access_type) in enumerate(mem_access_nodes):
             predecessors = operation_tree.predecessors(access_node)
-            mem_trans_state_name = f"{start_state}_{guard}_MEM_{idx}"
+            mem_trans_state_name = f"{start_state}_{guard}_{idx}"
             trans_op_tree, popped_nodes = GenMachineInPorts.pop_subtree_at_node(operation_tree, access_node)
             nodes_to_remove.update(popped_nodes)
             # Also gen_make sure to pop the memqueue at the end of this new operation tree
@@ -280,13 +284,13 @@ class GenMachineInPorts:
             # Replace this transition with one invoking a memory read and setting the state
             # to our new transient one
             mem_access_str = temp_h.string_repl_keys(temp_h.open_template(f"{access_type}.sm"),
-                                                     [Util.get_message_data_var(cluster)]
+                                                     [Util.get_message_data_var(arch.global_arch)]
                                                      )
             mem_access_node = UniqueNode(mem_trans_state_name + mem_access_str)
             operation_tree.add_node(mem_access_node, op_str=mem_access_str)
             for node in predecessors:
                 operation_tree.add_edge(node, mem_access_node)
-            final_state_str = GenPCCToSLICC.gen_final_state(temp_h, mem_trans_state_name, arch)
+            final_state_str = GenPCCToSLICC.gen_final_state(temp_h, mem_trans_state_name, cache)
             final_state_node = UniqueNode(mem_trans_state_name + final_state_str)
             operation_tree.add_node(final_state_node, op_str=final_state_str)
             operation_tree.add_edge(mem_access_node, final_state_node)
@@ -295,8 +299,8 @@ class GenMachineInPorts:
             pop_node = UniqueNode(str(final_state_node) + pop_str)
             operation_tree.add_node(pop_node, op_str=pop_str)
             operation_tree.add_edge(final_state_node, pop_node)
-            # and gen_make sure we progress..
-            progress_str = Util.gen_progress_str(temp_h, arch)
+            # and make sure we progress..
+            progress_str = Util.gen_progress_str(temp_h, cache)
             progress_node = UniqueNode(str(final_state_node) + progress_str)
             # Also add a dummy event to gen_make sure the simulation makes progress
             operation_tree.add_node(progress_node, op_str=progress_str)

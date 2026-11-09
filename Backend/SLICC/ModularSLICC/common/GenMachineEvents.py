@@ -1,5 +1,6 @@
 #  Copyright (c) 2022.  Nicolai Oswald
 #  Copyright (c) 2022.  University of Edinburgh
+#  Copyright (c) 2026.  Systems Research Group @ TUM
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -28,33 +29,10 @@
 #
 #
 #
-from DataObjects.Architecture.ClassFlatArchitecture import FlatArchitecture
-from DataObjects.FlowDataTypes.ClassMessage import Message
 from Backend.SLICC.ModularSLICC.TemplateClass import TemplateHandler
 
 
 class GenMachineEvents:
-
-    template_file = "event.sm"
-
-    @staticmethod
-    def gen_events_str(temp_h: TemplateHandler, arch: FlatArchitecture) -> str:
-        events = set()
-        for state in arch.get_architecture_states_verified():
-            for transition in state.state_trans:
-                guard = transition.guard
-                if isinstance(guard, Message):
-                    guard = guard.get_msg_type()
-                else:
-                    guard = guard.type
-                assert (isinstance(guard, str))
-                events.add(guard)
-
-        events_strs = [temp_h.tab + temp_h.string_repl_keys(temp_h.open_template(GenMachineEvents.template_file),
-                                                            [event])
-                       for event in events]
-
-        return temp_h.nl.join(events_strs)
 
     @staticmethod
     def gen_progress_event(temp_h: TemplateHandler) -> str: return f"Progress, desc=\"Progress, please!\"{temp_h.end}"
