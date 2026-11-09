@@ -12,7 +12,7 @@ Controllers* (MICRO 2026). Project page: https://synapse-coherence.github.io.
 
 ## Credits and provenance
 
-Synapse builds on **ProtoGen/HieraGen/HeteroGen** (Nicolai Oswald et al., University of Edinburgh) and **vCXLGen** (Anatole Lefort et al., Technical University of Munich); this repository is directly derived from their code.
+Synapse builds on **ProtoGen/HieraGen/HeteroGen** (Nicolai Oswald et al., University of Edinburgh) and **vCXLGen** (Anatole Lefort et al., Technical University of Munich); this repository is directly derived from their code. It is a fork of [HeteroGen](https://github.com/Errare-humanum-est/HeteroGen), and its history keeps the author of every change.
 
 <details>
 <summary><b>What is inherited from them, and how to cite</b></summary>
@@ -31,10 +31,14 @@ the Murphi backend and model-checking flow (`Backend/Murphi`,
 **vCXLGen**: Systems Research Group, TUM ([TUM-DSE/vCXLGen](https://github.com/TUM-DSE/vCXLGen)).
 vCXLGen extended HeteroGen to synthesize and verify CXL bridges. Synapse starts from vCXLGen's code base and reuses or modifies most of its core for (hierarchical) controller generation.
 
+**SLICC back end** (`Backend/SLICC/`): developed by Nicolai Oswald, Theo Olausson, Nicolò Carpentieri,
+Anatole Lefort, David Schall, Julian Pritzi and Simon Dittrich. It was first released on the
+[`slicc` branch of HeteroGen](https://github.com/Errare-humanum-est/HeteroGen/tree/slicc). If you use it,
+please cite HeteroGen and Synapse.
+
 **New in Synapse:** the decoupled protocol / topology / policy specification (`specs/`) and the synthesis
-built on it (`Algorithms/Synapse/`), the modular SLICC backend that generates caches, directory and bridge
-controllers and the gem5 setup (`Backend/SLICC/`), the `synapse.py` frontend, and the changes to the
-inherited modules that these need.
+built on it (`Algorithms/Synapse/`), the extensions of the SLICC back end that it needs, the gem5 setup
+(`Backend/gem5/`), the `synapse.py` frontend, and the changes to the inherited modules that these need.
 
 If you use Synapse, please also cite the work it builds on:
 
@@ -201,7 +205,8 @@ the protocol as any alloy protocol (write-through protocols with `DOSequencer_WT
 | `synapse.py` | command line |
 | `specs/` | protocols, policies, topologies |
 | `Algorithms/Synapse/` | labels, policies, topology, synthesis (Alg. 1) |
-| `Backend/SLICC/`, `Backend/gem5/` | SLICC generator; gem5 setups and build-and-test tool |
+| `Backend/SLICC/` | SLICC back end |
+| `Backend/gem5/` | gem5 setups and build-and-test tool |
 | `Backend/Murphi/` | Murphi model generator (`verify`) |
 | `Algorithms/`, `DataObjects/`, `Parser/`, `Debug/`, `Backend/Common/`, `MurphiLitmusTests/` | protocol parser, the ProtoGen/HieraGen/HeteroGen passes the synthesis builds on, and their support code |
 | `third_party/` | ANTLR 3 Python runtime |
