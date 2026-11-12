@@ -137,9 +137,16 @@ def check(model: Path, cmurphi: Path, memory_mb: int, image: Optional[str]) -> T
     name, folder = model.stem, model.parent
     script = f"make MURPHIPATH={{murphi}} > compile.txt 2>&1 && ./{name} -tv -pr -m {memory_mb} > results.txt 2>&1"
     if image:
+        murphi = cmurphi.resolve()
+        if Path("/nix/store") in murphi.parents:
+            # CMurphi built by Nix (`nix develop`): mu runs with its libraries from the store
+            mount, murphi_in_container = "/nix/store:/nix/store:ro", str(murphi)
+        else:
+            mount, murphi_in_container = f"{murphi}:/cmurphi:ro", "/cmurphi"
         command = ["docker", "run", "--rm", "--init", "--name", f"synapse-verify-{name}-{os.getpid()}",
-                   "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{cmurphi.resolve()}:/cmurphi:ro",
-                   "-v", f"{folder}:/model", "-w", "/model", image, "bash", "-c", script.format(murphi="/cmurphi")]
+                   "--user", f"{os.getuid()}:{os.getgid()}", "-v", mount,
+                   "-v", f"{folder}:/model", "-w", "/model", image, "bash", "-c",
+                   script.format(murphi=murphi_in_container)]
     else:
         command = ["bash", "-c", script.format(murphi=cmurphi.resolve())]
     subprocess.run(command, cwd=folder)

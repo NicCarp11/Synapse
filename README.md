@@ -106,6 +106,25 @@ python synapse.py show specs/topologies/numa.yaml       # the resolved system, n
 The name follows from the topology: `<protocols from the L1 up>_<policies>_<scenario>`, e.g.
 `MESI_CXL_WB_INCL_MN`.
 
+### With Nix
+
+`nix develop` opens a shell with what `verify` and the gem5 tools need, without docker: Python
+with the packages of `requirements.txt`, CMurphi (`$CMURPHI`, the default of `verify --murphi`),
+the toolchain gem5 v23.1 builds with (GCC 13, Python 3.11, SCons 4.8, mold) and Phoenix's kmeans
+(`$KMEANS_DIR`).
+
+```bash
+nix develop
+python synapse.py verify specs/topologies/smp.yaml --out out/smp-murphi --no-docker
+gem5-tree gem5     # a writable gem5 v23.1 tree, $GEM5_DIR in later shells
+python Backend/gem5/gem5_smoke.py --no-docker --gem5 gem5 --protocol MESI_MESI_WB_INCL_SMP=out/smp \
+    --kmeans-dir $KMEANS_DIR
+```
+
+`nix run . -- generate ...` runs a copy of `synapse.py` that reads protocols and policies from its
+own copy of `specs/`, which holds only the files git tracks; `nix build .#cmurphi`, `.#phoenix` and
+`.#gem5-tree` build the tools alone.
+
 ## Topologies
 
 `specs/topologies/multi_host.yaml`:
@@ -167,6 +186,7 @@ Parameters (defaults in brackets):
 | `numa.yaml` | S2: four sockets in a ring |
 | `multi_host.yaml` | S3: two compute nodes and a CXL memory pool |
 | `chiplets.yaml` | S4: eight chiplets on a fabric (alloy-gem5) |
+| `rocketchip.yaml` | RocketChip with SiFive's inclusive L2 (Chipyard's `RocketConfig`), TileLink TL-C (`TileLink.pcc`) at both levels |
 
 ## Verification
 

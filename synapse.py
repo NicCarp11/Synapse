@@ -356,7 +356,7 @@ def cmd_verify(args) -> int:
     print(f"\nmodel: {args.out / model.name} ({args.caches} first-level caches, every synthesized controller, "
           f"{top_caches} other {topology.hierarchy[-1].protocol.stem} caches, the directory; one address)")
     if args.murphi is None:
-        print("give --murphi to check it")
+        print("give --murphi or set CMURPHI to check it")
         return 0
     verdict, report = check(out / model.name, args.murphi, args.memory, None if args.no_docker else args.image)
     print(f"{'deadlock freedom' if args.deadlock_only else 'deadlock freedom and single writer'}: {verdict}")
@@ -414,8 +414,9 @@ def main() -> int:
                          "model-check the synthesized controllers with CMurphi: no deadlock, a single "
                          "writer or several readers")
     verify.add_argument("--out", type=Path, required=True, help="directory of the model and of CMurphi's report")
-    verify.add_argument("--murphi", type=Path, help="a CMurphi tree with src/mu built; without it the model is "
-                                                     "only written")
+    verify.add_argument("--murphi", type=Path, default=os.environ.get("CMURPHI"),
+                        help="a CMurphi tree with src/mu built (default: $CMURPHI); without it the model is "
+                             "only written")
     verify.add_argument("--caches", type=int, default=2, help="first-level caches in the model (2)")
     verify.add_argument("--top-caches", type=int,
                         help="other caches of the top protocol, beside the synthesized controller (1; 0 "

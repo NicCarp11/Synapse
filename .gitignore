@@ -1,3 +1,6 @@
 __pycache__/
 /out/
 /.venv/
+/gem5/
+/result
+/result-*
