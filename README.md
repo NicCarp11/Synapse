@@ -116,7 +116,7 @@ the toolchain gem5 v23.1 builds with (GCC 13, Python 3.11, SCons 4.8, mold) and 
 ```bash
 nix develop
 python synapse.py verify specs/topologies/smp.yaml --out out/smp-murphi --no-docker
-gem5-tree gem5     # a writable gem5 v23.1 tree, $GEM5_DIR in later shells
+gem5-tree gem5     # a writable copy of the artifact's gem5 (v23.1), $GEM5_DIR in later shells
 python Backend/gem5/gem5_smoke.py --no-docker --gem5 gem5 --protocol MESI_MESI_WB_INCL_SMP=out/smp \
     --kmeans-dir $KMEANS_DIR
 ```

@@ -8,11 +8,12 @@
       url = "github:Errare-humanum-est/CMurphi/1.0.0";
       flake = false;
     };
-    # The gem5 the SLICC back end and Backend/gem5 are written for ("gem5 v23"): its build is
-    # configured with Kconfig (gem5_smoke.py's `scons defconfig`/`setconfig`) and it has
-    # SimpleBTB (setup_v23.py), both new in v23.1.
+    # The gem5 the SLICC back end and Backend/gem5 are written for ("gem5 v23"): the Synapse
+    # artifact's gem5-S1_2_3.tar.gz (unpacked by S1_2_3_experiments/scripts/gem5-extract.sh),
+    # gem5 v23.1.0.0 with Synapse's changes to Ruby, Garnet and SLICC. The archive is the same
+    # blob at v1.0-ae, v1.1-ae and main.
     gem5 = {
-      url = "github:gem5/gem5/v23.1.0.0";
+      url = "https://raw.githubusercontent.com/TUM-DSE/Synapse/v1.1-ae/gem5-S1_2_3.tar.gz";
       flake = false;
     };
     # Phoenix 2.0, whose kmeans gem5_smoke.py runs on the generated controllers.
@@ -32,7 +33,7 @@
       ];
       forAllSystems = f: lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
 
-      gem5Version = "v23.1.0.0";
+      gem5Version = "v23.1.0.0-synapse";
 
       synapseSource = lib.fileset.toSource {
         root = ./.;
